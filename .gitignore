@@ -1,0 +1,10 @@
+# Locally fetched build artifacts (the APK is published to the apk-dist branch
+# and to GitHub Releases, not committed on source branches).
+out/
+*.apk
+dist-apk/
+
+# Node / build
+node_modules/
+dist/
+.DS_Store
