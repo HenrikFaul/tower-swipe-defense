@@ -8,7 +8,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: ['**']
+    branches: ['**', '!apk-dist']
     tags: ['v*']
   workflow_dispatch: {}
   release:
@@ -80,6 +80,26 @@ jobs:
           name: tower-swipe-defense-apk
           path: app/tower-swipe-defense.apk
           if-no-files-found: error
+
+      # Mirror the APK onto a dedicated `apk-dist` branch so it has a stable,
+      # fetchable location (objects.githubusercontent.com / git fetch) even
+      # where the Actions-artifact storage host is not reachable.
+      - name: Publish APK to apk-dist branch
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -e
+          cp app/tower-swipe-defense.apk /tmp/tsd.apk
+          SHORT=$(git rev-parse --short HEAD)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan apk-dist
+          git rm -rf . >/dev/null 2>&1 || true
+          cp /tmp/tsd.apk tower-swipe-defense.apk
+          printf '# Tower Swipe Defense — APK distribution branch\n\nAuto-published build of `%s`.\nDownload: tower-swipe-defense.apk\n' "$SHORT" > README.md
+          git add tower-swipe-defense.apk README.md
+          git commit -m "APK build from $SHORT"
+          git push --force origin apk-dist
 
       # On a v* tag push this CREATES the release; on a Release event it
       # attaches to the existing release. Either way the APK lands on a
