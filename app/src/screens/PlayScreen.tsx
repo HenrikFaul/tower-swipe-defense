@@ -4,6 +4,7 @@ import { Game, type Hud } from '../engine/game'
 import { render } from '../engine/render'
 import { BossIntroModal, PauseModal, ResultsModal, ShopModal } from '../components/GameModals'
 import { playSfx } from '../lib/audio'
+import { submitRun } from '../lib/cloud'
 
 export default function PlayScreen() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -116,7 +117,7 @@ export default function PlayScreen() {
 
   const game = gameRef.current
 
-  const finalize = (doubled: boolean) => {
+  const finalize = (doubled: boolean, died: boolean) => {
     const g = gameRef.current
     if (!g || recordedRef.current) {
       go('menu')
@@ -125,17 +126,17 @@ export default function PlayScreen() {
     recordedRef.current = true
     const s = store.getState()
     const earned = Math.max(0, Math.floor(g.coins) - s.startCoinsForRun())
-    recordRun(
-      {
-        mode: pendingRun?.mode ?? 'normal',
-        wave: g.wave,
-        score: Math.floor(g.score),
-        durationMs: g.getElapsedMs(),
-        date: new Date().toISOString(),
-      },
-      earned,
-      doubled,
-    )
+    const run = {
+      mode: pendingRun?.mode ?? ('normal' as const),
+      wave: g.wave,
+      score: Math.floor(g.score),
+      durationMs: g.getElapsedMs(),
+      date: new Date().toISOString(),
+    }
+    recordRun(run, earned, doubled, died)
+    // Best-effort cloud submission for the online leaderboard (no-op offline).
+    const upgrades = g.getHud().upgradeLevels as unknown as Record<string, number>
+    void submitRun(run, upgrades, pendingRun?.seed)
     playSfx('win')
     go('menu')
   }
@@ -189,14 +190,14 @@ export default function PlayScreen() {
             <ShopModal game={game} hud={hud} onReroll={() => game.reroll()} />
           )}
           {game && hud.phase === 'paused' && (
-            <PauseModal game={game} onQuit={() => finalize(false)} />
+            <PauseModal game={game} onQuit={() => finalize(false, false)} />
           )}
           {game && hud.phase === 'gameover' && (
             <ResultsModal
               hud={hud}
               reviveHealPct={store.getState().reviveHealPct()}
               onRevive={() => game.revive()}
-              onClaim={(doubled) => finalize(doubled)}
+              onClaim={(doubled) => finalize(doubled, true)}
             />
           )}
         </>

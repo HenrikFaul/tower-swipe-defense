@@ -11,17 +11,14 @@ export function mulberry32(seed: number): () => number {
   }
 }
 
-// Stable seed for "today" so the daily challenge matches the server's
-// daily-seed edge function (UTC date → integer).
+// Stable seed for "today" as the YYYYMMDD integer (UTC). This matches the
+// server's daily-seed function byte-for-byte (`to_char(d,'YYYYMMDD')::bigint`),
+// so an offline client and a server-synced client play the identical run.
 export function dailySeed(date = new Date()): number {
   const y = date.getUTCFullYear()
   const m = date.getUTCMonth() + 1
   const d = date.getUTCDate()
-  // Cheap hash of yyyymmdd.
-  let h = (y * 10000 + m * 100 + d) >>> 0
-  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b)
-  h = Math.imul(h ^ (h >>> 16), 0x45d9f3b)
-  return (h ^ (h >>> 16)) >>> 0
+  return y * 10000 + m * 100 + d // e.g. 2026-06-26 → 20260626
 }
 
 export function todayKey(date = new Date()): string {

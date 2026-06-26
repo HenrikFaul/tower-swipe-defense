@@ -143,7 +143,9 @@ declare
 begin
   select seed into s from public.daily_challenge where date = d;
   if s is null then
-    s := (abs(hashtext(to_char(d, 'YYYYMMDD'))))::bigint;
+    -- YYYYMMDD as an integer — identical to the client's rng.dailySeed(), so
+    -- offline and server-synced players get the exact same deterministic run.
+    s := to_char(d, 'YYYYMMDD')::bigint;
     insert into public.daily_challenge(date, seed) values (d, s)
       on conflict (date) do nothing;
     select seed into s from public.daily_challenge where date = d;
@@ -152,3 +154,39 @@ begin
 end;
 $$;
 grant execute on function public.ensure_daily_seed(date) to authenticated, anon, service_role;
+
+-- ---------------------------------------------------------------------------
+-- helper: atomically grant currency / skins to the calling user, creating the
+-- meta_state row if absent. Runs as definer so edge functions can rely on it
+-- regardless of whether a row exists yet (fixes silent no-op UPDATEs and the
+-- read-modify-write lost-update race for IAP / ad rewards).
+-- ---------------------------------------------------------------------------
+create or replace function public.grant_rewards(
+  p_coins bigint default 0,
+  p_gems int default 0,
+  p_skin text default null
+)
+returns void
+language plpgsql
+security definer
+as $$
+begin
+  insert into public.meta_state (user_id, coins, gems, owned_skins)
+  values (
+    auth.uid(),
+    greatest(p_coins, 0),
+    greatest(p_gems, 0),
+    case when p_skin is null then array['stone'] else array['stone', p_skin] end
+  )
+  on conflict (user_id) do update
+  set coins = public.meta_state.coins + greatest(p_coins, 0),
+      gems = public.meta_state.gems + greatest(p_gems, 0),
+      owned_skins = case
+        when p_skin is null or p_skin = any(public.meta_state.owned_skins)
+          then public.meta_state.owned_skins
+        else array_append(public.meta_state.owned_skins, p_skin)
+      end,
+      updated_at = now();
+end;
+$$;
+grant execute on function public.grant_rewards(bigint, int, text) to authenticated, service_role;

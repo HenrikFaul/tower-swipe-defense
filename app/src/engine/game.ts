@@ -33,7 +33,7 @@ interface Enemy {
   armor: number
   healPerSec: number
   rangedDmg: number
-  shield: number
+  shield: number // mage: strength of the shield aura it projects to allies
   boss: boolean
   frozen: number // seconds remaining stopped
   slowT: number // seconds remaining slowed
@@ -41,6 +41,7 @@ interface Enemy {
   burnT: number
   rangeCd: number
   hitFlash: number
+  shieldAura: number // transient: best shield % from nearby mages this frame
 }
 
 interface Projectile {
@@ -295,6 +296,7 @@ export class Game {
       burnT: 0,
       rangeCd: 1.5,
       hitFlash: 0,
+      shieldAura: 0,
     }
     this.enemies.push(e)
     if (e.boss) this.bossRef = e
@@ -417,9 +419,11 @@ export class Game {
     this.hp = this.maxHp * this.opts.reviveHealPct
     this.enemies = []
     this.projectiles = []
-    this.phase = 'playing'
-    this.waveActive = true
-    this.opts.onChange()
+    this.bossRef = null
+    // Re-run the current wave from a clean slate. Without resetting the spawn
+    // counters the wave would instantly satisfy the clear condition on the next
+    // tick — skipping a boss fight and granting an unearned boss bonus.
+    this.startWave(this.wave)
   }
 
   pause() {
@@ -485,6 +489,17 @@ export class Game {
 
   private updateEnemies(dt: number) {
     const waveBaseSpeedScale = 1
+
+    // Mage shield aura — a mage grants a damage shield to the team nearby
+    // (spec §2.3). Recomputed each frame so it lapses when the mage dies.
+    for (const e of this.enemies) e.shieldAura = 0
+    for (const m of this.enemies) {
+      if (m.shield <= 0) continue
+      for (const ally of this.enemies) {
+        if (dist(m, ally) < 170) ally.shieldAura = Math.max(ally.shieldAura, m.shield)
+      }
+    }
+
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i]
       if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 6)
@@ -517,13 +532,20 @@ export class Game {
         e.y += dir.y * speed * dt
       }
 
-      // healer aura
+      // healer aura — heal only the single nearest damaged ally (spec §2.3)
       if (e.healPerSec > 0) {
+        let target: Enemy | null = null
+        let bestD = 110
         for (const other of this.enemies) {
-          if (other === e) continue
-          if (dist(e, other) < 110 && other.hp < other.maxHp) {
-            other.hp = Math.min(other.maxHp, other.hp + other.maxHp * e.healPerSec * dt)
+          if (other === e || other.hp >= other.maxHp) continue
+          const d = dist(e, other)
+          if (d < bestD) {
+            bestD = d
+            target = other
           }
+        }
+        if (target) {
+          target.hp = Math.min(target.maxHp, target.hp + target.maxHp * e.healPerSec * dt)
         }
       }
 
@@ -646,7 +668,7 @@ export class Game {
   private damageEnemy(e: Enemy, raw: number, _crit: boolean, fromShot: boolean) {
     let dmg = raw
     if (e.armor > 0) dmg *= 1 - e.armor
-    if (e.shield > 0) dmg *= 1 - e.shield
+    if (e.shieldAura > 0) dmg *= 1 - e.shieldAura
     e.hp -= dmg
     if (fromShot) {
       this.combo++

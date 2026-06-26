@@ -37,19 +37,13 @@ Deno.serve(async (req) => {
     })
 
     if (reward.coins || reward.gems) {
-      const { data: meta } = await supabase
-        .from('meta_state')
-        .select('coins, gems')
-        .eq('user_id', user.id)
-        .maybeSingle()
-      await supabase
-        .from('meta_state')
-        .update({
-          coins: (meta?.coins ?? 0) + (reward.coins ?? 0),
-          gems: (meta?.gems ?? 0) + (reward.gems ?? 0),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', user.id)
+      // Atomic, row-creating grant (avoids no-op UPDATE + lost-update race).
+      const { error } = await supabase.rpc('grant_rewards', {
+        p_coins: reward.coins ?? 0,
+        p_gems: reward.gems ?? 0,
+        p_skin: null,
+      })
+      if (error) return json({ error: error.message }, 400)
     }
 
     return json({ ok: true, placement, reward })

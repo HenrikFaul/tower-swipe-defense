@@ -12,9 +12,12 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY')!,
     )
-    const { data, error } = await supabase.rpc('ensure_daily_seed')
+    // Pass an explicit UTC date so the row key, the seed, and the reported date
+    // all derive from one agreed value (independent of the DB session timezone).
+    const today = new Date().toISOString().slice(0, 10)
+    const { data, error } = await supabase.rpc('ensure_daily_seed', { d: today })
     if (error) return json({ error: error.message }, 400)
-    return json({ date: new Date().toISOString().slice(0, 10), seed: Number(data) })
+    return json({ date: today, seed: Number(data) })
   } catch (e) {
     return json({ error: String(e) }, 500)
   }

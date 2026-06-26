@@ -52,8 +52,9 @@ interface StoreState {
   // settings
   setSetting: <K extends keyof Settings>(k: K, v: Settings[K]) => void
 
-  // run results
-  recordRun: (run: LocalRun, coinsEarned: number, doubled: boolean) => void
+  // run results — `died` distinguishes a tower-fall (counts toward DDA) from
+  // a voluntary quit (does not).
+  recordRun: (run: LocalRun, coinsEarned: number, doubled: boolean, died: boolean) => void
 
   ddaForWave: () => { ddaDmgMul: number; ddaEnemyHpMul: number }
   maxHpForRun: () => number
@@ -145,33 +146,48 @@ export const useGameStore = create<StoreState>((set, get) => ({
     save(get)
   },
 
-  recordRun: (run, coinsEarned, doubled) => {
+  recordRun: (run, coinsEarned, doubled, died) => {
     const { meta, runs, waveDeaths } = get()
     const total = doubled ? coinsEarned * 2 : coinsEarned
     const isDaily = run.mode === 'daily'
     const newRuns = [...runs, run]
       .sort((a, b) => b.score - a.score)
       .slice(0, 50)
+    const newBestWave = Math.max(meta.bestWave, run.wave)
+
+    // DDA bookkeeping (AI_PROMPT §5.1): the compensation must be per-tier and
+    // temporary. Drop death counts for any wave the player has now cleared
+    // (< the best wave reached), and only register a new failure on a genuine
+    // tower-fall — not a voluntary quit.
+    const nextDeaths: Record<number, number> = {}
+    for (const [w, c] of Object.entries(waveDeaths)) {
+      if (Number(w) >= newBestWave) nextDeaths[Number(w)] = c
+    }
+    if (died) nextDeaths[run.wave] = (nextDeaths[run.wave] ?? 0) + 1
+
     set({
       meta: {
         ...meta,
         coins: meta.coins + total,
         gems: meta.gems + (run.wave >= 10 ? Math.floor(run.wave / 10) * 2 : 0),
-        bestWave: Math.max(meta.bestWave, run.wave),
+        bestWave: newBestWave,
         bestScore: Math.max(meta.bestScore, run.score),
         totalRuns: meta.totalRuns + 1,
         dailyBestWave: isDaily ? Math.max(meta.dailyBestWave, run.wave) : meta.dailyBestWave,
         lastDailyDate: isDaily ? new Date().toISOString().slice(0, 10) : meta.lastDailyDate,
       },
       runs: newRuns,
-      waveDeaths: { ...waveDeaths, [run.wave]: (waveDeaths[run.wave] ?? 0) + 1 },
+      waveDeaths: nextDeaths,
     })
     save(get)
   },
 
   ddaForWave: () => {
-    const { waveDeaths } = get()
-    const stuck = Object.values(waveDeaths).some((c) => c >= 3)
+    const { waveDeaths, meta } = get()
+    // Stuck = ≥3 failures on a wave the player still hasn't cleared.
+    const stuck = Object.entries(waveDeaths).some(
+      ([w, c]) => c >= 3 && Number(w) > meta.bestWave - 1,
+    )
     return stuck ? { ddaDmgMul: 1.15, ddaEnemyHpMul: 0.9 } : { ddaDmgMul: 1, ddaEnemyHpMul: 1 }
   },
 

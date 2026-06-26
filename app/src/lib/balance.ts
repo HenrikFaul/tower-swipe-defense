@@ -31,11 +31,6 @@ export function isDragonWave(wave: number): boolean {
   return wave % 30 === 0
 }
 
-/** Wave active duration in seconds: 8 + 0.3*w (AI_PROMPT.md §2.4). */
-export function waveDuration(wave: number): number {
-  return 8 + 0.3 * wave
-}
-
 /** Spawns per second: 1 + floor(w/5). */
 export function waveSpawnRate(wave: number): number {
   return 1 + Math.floor(wave / 5)

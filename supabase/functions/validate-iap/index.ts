@@ -49,24 +49,14 @@ Deno.serve(async (req) => {
     })
     if (!verified) return json({ ok: false, error: 'invalid_receipt' }, 400)
 
-    const { data: meta } = await supabase
-      .from('meta_state')
-      .select('coins, gems, owned_skins, meta_upgrades')
-      .eq('user_id', user.id)
-      .maybeSingle()
-
-    const ownedSkins = new Set<string>(meta?.owned_skins ?? ['stone'])
-    if (product.skin) ownedSkins.add(product.skin)
-
-    await supabase
-      .from('meta_state')
-      .update({
-        coins: (meta?.coins ?? 0) + (product.coins ?? 0),
-        gems: (meta?.gems ?? 0) + (product.gems ?? 0),
-        owned_skins: [...ownedSkins],
-        updated_at: new Date().toISOString(),
-      })
-      .eq('user_id', user.id)
+    // Atomic, row-creating grant (avoids no-op UPDATE for users without a
+    // meta_state row and the read-modify-write lost-update race).
+    const { error: grantErr } = await supabase.rpc('grant_rewards', {
+      p_coins: product.coins ?? 0,
+      p_gems: product.gems ?? 0,
+      p_skin: product.skin ?? null,
+    })
+    if (grantErr) return json({ error: grantErr.message }, 400)
 
     return json({ ok: true, granted: product })
   } catch (e) {
