@@ -19,10 +19,13 @@ export function VictoryModal({ game, hud }: { game: IsoGame; hud: Hud }) {
         <div className="tag" style={{ marginTop: 10 }}>
           REWARDS
         </div>
-        <div className="row gap" style={{ justifyContent: 'center', margin: '8px 0 16px' }}>
+        <div className="row gap" style={{ justifyContent: 'center', margin: '8px 0 6px' }}>
           <span className="chip coin">🪙 {c.coins}</span>
           {c.gems > 0 && <span className="chip gem">💎 {c.gems}</span>}
         </div>
+        {c.interest > 0 && (
+          <div className="muted" style={{ marginBottom: 10 }}>+ 🪙{c.interest} interest banked</div>
+        )}
         <div className="crate">🎁</div>
         <Tap className="btn full" onClick={() => game.continueAfterClear()}>
           CONTINUE

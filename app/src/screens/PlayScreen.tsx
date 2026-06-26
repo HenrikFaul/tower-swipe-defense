@@ -1,11 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../store/gameStore'
-import { IsoGame, type Hud } from '../engine/isoGame'
+import { IsoGame, type Hud, TARGET_LABEL } from '../engine/isoGame'
 import { renderIso } from '../engine/isoRender'
 import { TOWERS, TOWER_IDS, type TowerId } from '../data/towers'
+import { POWERS } from '../data/powers'
+import type { EnemyType } from '../data/enemies'
 import { VictoryModal, PauseModal, GameOverModal } from '../components/IsoModals'
 import { playSfx } from '../lib/audio'
 import { submitRun } from '../lib/cloud'
+
+const ENEMY_EMOJI: Record<EnemyType, string> = {
+  slime: '🟢', imp: '👹', brute: '🪨', shaman: '🧙', warlock: '🦹', golem: '🗿', ogre: '👺', dragon: '🐉',
+}
 
 export default function PlayScreen() {
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -14,10 +20,10 @@ export default function PlayScreen() {
   const recordedRef = useRef(false)
 
   const pendingRun = useGameStore((s) => s.pendingRun)
-  const settings = useGameStore((s) => s.settings)
   const go = useGameStore((s) => s.go)
   const recordRun = useGameStore((s) => s.recordRun)
   const runModifiers = useGameStore((s) => s.runModifiers)
+  const autoStart = useGameStore((s) => s.settings.autoStart)
 
   const [hud, setHud] = useState<Hud | null>(null)
 
@@ -27,11 +33,7 @@ export default function PlayScreen() {
     const ctx = canvas.getContext('2d', { alpha: false })!
     const run = pendingRun ?? { mode: 'normal' as const, seed: (Math.random() * 1e9) | 0 }
 
-    const game = new IsoGame({
-      seed: run.seed,
-      mods: runModifiers(),
-      onChange: () => setHud(game.getHud()),
-    })
+    const game = new IsoGame({ seed: run.seed, mods: runModifiers(), onChange: () => setHud(game.getHud()) })
     gameRef.current = game
 
     const dpr = Math.min(2, window.devicePixelRatio || 1)
@@ -125,56 +127,87 @@ export default function PlayScreen() {
     go('menu')
   }
 
+  const cycleSpeed = () => {
+    if (!game) return
+    game.setSpeed(game.speed >= 3 ? 1 : game.speed + 1)
+  }
+
   return (
     <div className="screen" ref={wrapRef} style={{ padding: 0 }}>
       <canvas ref={canvasRef} style={{ display: 'block', touchAction: 'none' }} />
 
       {hud && (
         <>
-          {/* top HUD */}
           <div className="hud-top">
-            <div className="wave-pill">
-              WAVE {hud.wave}
-              <span style={{ opacity: 0.6, fontSize: 12 }}> /∞</span>
+            <div className="col" style={{ gap: 2 }}>
+              <div className="wave-pill">
+                WAVE {hud.wave}
+                <span style={{ opacity: 0.6, fontSize: 12 }}> /∞</span>
+              </div>
+              <span className="muted" style={{ fontSize: 11, paddingLeft: 4 }}>{hud.mapName}</span>
             </div>
             <div className="row gap">
               <span className="chip" style={{ color: '#ff8a7a' }}>❤ {hud.lives}</span>
               <span className="chip coin">🪙 {hud.gold}</span>
-              <button className="icon-btn" aria-label="Pause" onClick={() => game?.pause()}>
-                ⏸
-              </button>
+              {hud.phase === 'wave' && (
+                <button className="icon-btn" aria-label="Speed" onClick={cycleSpeed}>{hud.speed}×</button>
+              )}
+              <button className="icon-btn" aria-label="Pause" onClick={() => game?.pause()}>⏸</button>
             </div>
           </div>
 
-          {hud.bossLabel && (hud.phase === 'wave') && hud.bossHpFrac > 0 && (
-            <div style={{ position: 'absolute', top: 84, left: 24, right: 24, zIndex: 5 }}>
+          {hud.bossLabel && hud.phase === 'wave' && hud.bossHpFrac > 0 && (
+            <div style={{ position: 'absolute', top: 92, left: 24, right: 24, zIndex: 5 }}>
               <div className="center tag" style={{ color: 'var(--bad)' }}>{hud.bossLabel}</div>
-              <div className="hpbar low">
-                <span style={{ width: `${hud.bossHpFrac * 100}%` }} />
-              </div>
+              <div className="hpbar low"><span style={{ width: `${hud.bossHpFrac * 100}%` }} /></div>
             </div>
           )}
 
-          {/* power button */}
-          <button
-            className="power-btn"
-            aria-label="Meteor power"
-            disabled={!hud.powerReady}
-            onClick={() => { /* swipe to aim on the field; tap shows hint */ }}
-          >
-            <span>☄️</span>
-            {!hud.powerReady && <span className="cd">{Math.ceil(hud.powerCd)}</span>}
-          </button>
+          {/* wave preview (build phase) */}
+          {hud.phase === 'build' && hud.preview.length > 0 && (
+            <div className="wave-preview">
+              <span className="tag">NEXT WAVE</span>
+              {hud.preview.map((it) => (
+                <span key={it.type} className="prev-chip">
+                  {ENEMY_EMOJI[it.type]} ×{it.count}
+                </span>
+              ))}
+            </div>
+          )}
 
-          {/* bottom controls: tower panel or build cards, plus START WAVE */}
+          {/* powers */}
+          {(hud.phase === 'wave' || hud.phase === 'build') && (
+            <div className="powers">
+              {hud.powers.map((pw) => (
+                <button
+                  key={pw.id}
+                  className={'power-btn' + (pw.active ? ' active' : '')}
+                  disabled={!pw.ready || (pw.id !== 'meteor' && hud.phase !== 'wave')}
+                  onClick={() => {
+                    if (pw.id === 'freeze') game?.castFreeze()
+                    else if (pw.id === 'goldrush') game?.castGoldRush()
+                  }}
+                  aria-label={POWERS[pw.id].name}
+                >
+                  <span>{POWERS[pw.id].icon}</span>
+                  {!pw.ready && <span className="cd">{Math.ceil(pw.cd)}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* bottom controls */}
           {(hud.phase === 'build' || hud.phase === 'wave') && (
             <div className="build-bar">
               {hud.selectedTowerInfo ? (
                 <div className="tower-panel">
-                  <div className="col" style={{ flex: 1 }}>
+                  <div className="col" style={{ flex: 1, minWidth: 0 }}>
                     <strong>{TOWERS[hud.selectedTowerInfo.type].name}</strong>
                     <span className="muted">Tier {hud.selectedTowerInfo.tier + 1}</span>
                   </div>
+                  <button className="btn secondary" onClick={() => game?.cycleTarget()} aria-label="Targeting">
+                    🎯 {TARGET_LABEL[hud.selectedTowerInfo.targetMode]}
+                  </button>
                   <button
                     className="btn"
                     disabled={hud.selectedTowerInfo.maxTier || hud.gold < hud.selectedTowerInfo.upgradeCost}
@@ -182,9 +215,7 @@ export default function PlayScreen() {
                   >
                     {hud.selectedTowerInfo.maxTier ? 'MAX' : `⬆ 🪙${hud.selectedTowerInfo.upgradeCost}`}
                   </button>
-                  <button className="btn secondary" onClick={() => game?.sellSelected()}>
-                    💰 {hud.selectedTowerInfo.sellValue}
-                  </button>
+                  <button className="btn secondary" onClick={() => game?.sellSelected()}>💰{hud.selectedTowerInfo.sellValue}</button>
                 </div>
               ) : (
                 <div className="build-cards">
@@ -207,7 +238,13 @@ export default function PlayScreen() {
                 </div>
               )}
               {hud.phase === 'build' && (
-                <button className="btn start-wave" onClick={() => game?.startWave()}>
+                <button
+                  className="btn start-wave"
+                  onClick={() => {
+                    game?.startWave()
+                    if (autoStart && game) game.setSpeed(2)
+                  }}
+                >
                   ▶ START WAVE {hud.wave}
                 </button>
               )}
@@ -219,7 +256,6 @@ export default function PlayScreen() {
           {hud.phase === 'gameover' && <GameOverModal hud={hud} onClaim={(d) => finalize(d)} />}
 
           <div className="fps">{hud.fps} fps</div>
-          {settings.reducedMotion && null}
         </>
       )}
     </div>

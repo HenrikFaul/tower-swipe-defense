@@ -6,7 +6,15 @@ export interface RelicDef {
   desc: string
   price: number // gems
   // gameplay effect, read by the engine at run start
-  effect: { dmgMul?: number; goldStart?: number; livesStart?: number; rangeMul?: number; goldMul?: number }
+  effect: {
+    dmgMul?: number
+    goldStart?: number
+    livesStart?: number
+    rangeMul?: number
+    goldMul?: number
+    fireRateMul?: number
+    interestBonus?: number
+  }
 }
 
 export const RELICS: RelicDef[] = [
@@ -15,6 +23,9 @@ export const RELICS: RelicDef[] = [
   { id: 'rampart', name: 'Rampart', icon: '🧱', desc: '+5 starting lives', price: 160, effect: { livesStart: 5 } },
   { id: 'eagle', name: "Eagle's Eye", icon: '🦅', desc: '+8% tower range', price: 140, effect: { rangeMul: 0.08 } },
   { id: 'midas', name: 'Midas Touch', icon: '✨', desc: '+12% gold from kills', price: 180, effect: { goldMul: 0.12 } },
+  { id: 'overload', name: 'Overload Core', icon: '⚡', desc: '+8% fire rate', price: 200, effect: { fireRateMul: 0.08 } },
+  { id: 'banker', name: "Banker's Seal", icon: '🏦', desc: '+5% interest per wave', price: 170, effect: { interestBonus: 0.05 } },
+  { id: 'bulwark', name: 'Bulwark', icon: '🛡️', desc: '+8 starting lives', price: 240, effect: { livesStart: 8 } },
 ]
 
 export function relicById(id: string): RelicDef | undefined {

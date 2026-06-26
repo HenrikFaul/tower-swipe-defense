@@ -497,35 +497,69 @@ h3,
   padding: 0 12px;
 }
 
-.power-btn {
+.powers {
   position: absolute;
-  right: 14px;
-  bottom: calc(env(safe-area-inset-bottom) + 120px);
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom) + 150px);
   z-index: 6;
-  width: 60px;
-  height: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.power-btn {
+  position: relative;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
   border: 2px solid var(--accent-2);
-  background: radial-gradient(circle at 40% 35%, #ff9a4d, #b85600);
+  background: radial-gradient(circle at 40% 35%, #2c4a4d, #16302f);
   color: #fff;
-  font-size: 26px;
+  font-size: 23px;
   display: grid;
   place-items: center;
   cursor: pointer;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+.power-btn.active {
+  background: radial-gradient(circle at 40% 35%, #ff9a4d, #b85600);
+  box-shadow: 0 0 16px rgba(255, 140, 60, 0.8);
 }
 .power-btn:disabled {
-  filter: grayscale(0.7) brightness(0.6);
+  filter: grayscale(0.6) brightness(0.6);
 }
 .power-btn .cd {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 800;
-  background: rgba(0, 0, 0, 0.45);
+  background: rgba(0, 0, 0, 0.5);
   border-radius: 50%;
+}
+
+.wave-preview {
+  position: absolute;
+  top: 96px;
+  left: 12px;
+  right: 12px;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  background: rgba(8, 20, 22, 0.7);
+  border: 1px solid var(--panel-line);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+.prev-chip {
+  font-size: 13px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 3px 8px;
 }
 
 .crate {

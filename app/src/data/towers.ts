@@ -22,7 +22,10 @@ export interface TowerDef {
   splash?: number // AoE radius in tiles (cannon)
   slow?: { amount: number; dur: number } // ice
   dot?: { dps: number; dur: number } // poison
+  burn?: { dps: number; dur: number } // cannon scorch
   pierceShield?: boolean // mage ignores shields
+  magic?: boolean // bypasses physical armor, hits magicResist
+  crit?: { chance: number; mult: number }
   melee?: boolean // barracks: short-range garrison
   tiers: TowerTier[] // index 0 = built, 1,2 = upgrades
 }
@@ -36,6 +39,7 @@ export const TOWERS: Record<TowerId, TowerDef> = {
     color: 0x8a6a44,
     accent: 0xffd27a,
     projectile: 'arrow',
+    crit: { chance: 0.2, mult: 2.2 },
     tiers: [
       { dmgMin: 12, dmgMax: 18, cd: 1.6, range: 2.7, upgradeCost: 100 },
       { dmgMin: 20, dmgMax: 30, cd: 1.3, range: 3.0, upgradeCost: 120 },
@@ -51,6 +55,7 @@ export const TOWERS: Record<TowerId, TowerDef> = {
     accent: 0xff8a3d,
     projectile: 'cannon',
     splash: 1.2,
+    burn: { dps: 6, dur: 2 },
     tiers: [
       { dmgMin: 25, dmgMax: 45, cd: 2.2, range: 2.4, upgradeCost: 150 },
       { dmgMin: 45, dmgMax: 75, cd: 2.0, range: 2.6, upgradeCost: 180 },
@@ -66,6 +71,8 @@ export const TOWERS: Record<TowerId, TowerDef> = {
     accent: 0xc7b3ff,
     projectile: 'magic',
     pierceShield: true,
+    magic: true,
+    crit: { chance: 0.12, mult: 2.5 },
     tiers: [
       { dmgMin: 30, dmgMax: 60, cd: 2.5, range: 2.9, upgradeCost: 180 },
       { dmgMin: 55, dmgMax: 100, cd: 2.3, range: 3.1, upgradeCost: 220 },

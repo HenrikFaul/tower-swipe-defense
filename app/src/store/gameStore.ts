@@ -131,6 +131,8 @@ export const useGameStore = create<StoreState>((set, get) => ({
       livesStart: BASE_LIVES,
       rangeMul: 0,
       goldMul: 0,
+      fireRateMul: 0,
+      interestBonus: 0,
       towerMetaLevels: meta.towerLevels,
     }
     for (const id of meta.relics) {
@@ -142,6 +144,8 @@ export const useGameStore = create<StoreState>((set, get) => ({
       if (e.livesStart) mods.livesStart += e.livesStart
       if (e.rangeMul) mods.rangeMul += e.rangeMul
       if (e.goldMul) mods.goldMul += e.goldMul
+      if (e.fireRateMul) mods.fireRateMul += e.fireRateMul
+      if (e.interestBonus) mods.interestBonus += e.interestBonus
     }
     return mods
   },
