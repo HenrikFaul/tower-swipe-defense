@@ -1,0 +1,851 @@
+/* ============================================================
+   TOWER SWIPE DEFENSE — Premium UI Theme
+   Stylized-3D vibrant look: deep purple/indigo/navy bg,
+   magenta + orange/gold + cyan accents, additive glow/bloom.
+   Pure CSS, no imports. Loads AFTER global.css to override.
+   ============================================================ */
+
+:root {
+  /* ---- Backgrounds (deep purple/indigo/navy) ---- */
+  --bg-900: #0b0518;
+  --bg-800: #120a2a;
+  --bg-700: #1a0f3d;
+  --bg-600: #241452;
+  --bg-500: #321c6e;
+  --bg-navy: #0e1430;
+  --bg-navy-2: #16204a;
+
+  /* ---- Surfaces / panels ---- */
+  --surface-1: rgba(40, 24, 84, 0.72);
+  --surface-2: rgba(54, 34, 110, 0.85);
+  --surface-3: rgba(28, 16, 62, 0.92);
+  --surface-glass: rgba(60, 40, 120, 0.45);
+  --scrim: rgba(8, 4, 22, 0.74);
+  --ink-on-dark: #f2ecff;
+  --ink-on-light: #1a0e33;
+
+  /* ---- Brand accents ---- */
+  --magenta: #b14cff;
+  --magenta-2: #7b61ff;
+  --magenta-deep: #5a1fb8;
+  --orange: #ff7b00;
+  --orange-2: #ffb347;
+  --gold: #ffd27a;
+  --gold-deep: #b85600;
+  --cyan: #3fe0ff;
+  --cyan-2: #5cc8ff;
+  --cyan-deep: #1b7fa8;
+
+  /* ---- Functional / semantic ---- */
+  --good-2: #9cf06a;
+  --bad-2: #ff7a5c;
+  --warn: #ffc23d;
+  --coin-deep: #c9920e;
+  --xp: #b14cff;
+  --energy: #ffc23d;
+  --locked: #5a5476;
+
+  /* ---- Text ---- */
+  --text-mute: #8478a8;
+  --text-gold: #ffd27a;
+
+  /* ---- Hairlines / borders ---- */
+  --line: rgba(177, 76, 255, 0.22);
+  --line-gold: rgba(255, 210, 122, 0.28);
+  --line-cyan: rgba(63, 224, 255, 0.3);
+  --line-soft: rgba(242, 236, 255, 0.1);
+
+  /* ---- Gradient recipes ---- */
+  --grad-app: radial-gradient(120% 85% at 50% 18%, #321c6e 0%, #1a0f3d 45%, #0b0518 100%);
+  --grad-panel: linear-gradient(160deg, rgba(60, 40, 120, 0.85), rgba(28, 16, 62, 0.92));
+  --grad-cta: linear-gradient(180deg, #ffe08a 0%, #ffb347 38%, #ff7b00 100%);
+  --grad-cta-hi: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 45%);
+  --grad-magenta: linear-gradient(180deg, #c77bff 0%, #b14cff 45%, #7a2fd6 100%);
+  --grad-cyan: linear-gradient(180deg, #7bebff 0%, #3fe0ff 45%, #1b9fcb 100%);
+  --grad-gold-text: linear-gradient(180deg, #fff3c4 0%, #ffd27a 40%, #ff9e2c 70%, #ff7b00 100%);
+  --grad-hp: linear-gradient(90deg, #5ee08a, #9cf06a);
+  --grad-hp-low: linear-gradient(90deg, #ff4d5e, #ff7a5c);
+  --grad-xp: linear-gradient(90deg, #7b61ff, #b14cff, #e07bff);
+  --grad-boss-hp: linear-gradient(90deg, #b81f3a, #ff4d5e, #ff8a3d);
+  --grad-field: radial-gradient(140% 100% at 50% 30%, #241452, #0e1430 80%);
+  --grad-vignette: radial-gradient(110% 90% at 50% 42%, transparent 55%, rgba(11, 5, 24, 0.85) 100%);
+  --grad-banner: linear-gradient(100deg, #5a1fb8, #b14cff 50%, #ff7b00);
+
+  /* ---- Drop-shadow elevation ---- */
+  --sh-1: 0 2px 6px rgba(7, 3, 18, 0.45);
+  --sh-2: 0 6px 16px rgba(7, 3, 18, 0.55);
+  --sh-3: 0 12px 32px rgba(7, 3, 18, 0.62);
+  --sh-4: 0 24px 64px rgba(7, 3, 18, 0.7);
+  --sh-btn-cta: 0 6px 0 #b85600, 0 10px 20px rgba(255, 123, 0, 0.3), 0 12px 28px rgba(7, 3, 18, 0.55);
+  --sh-btn-cta-down: 0 2px 0 #b85600, 0 4px 12px rgba(7, 3, 18, 0.5);
+  --sh-btn-magenta: 0 6px 0 #5a1fb8, 0 10px 22px rgba(177, 76, 255, 0.35);
+  --sh-btn-cyan: 0 6px 0 #1b7fa8, 0 10px 22px rgba(63, 224, 255, 0.35);
+
+  /* ---- Neon glow ---- */
+  --glow-magenta: 0 0 12px rgba(177, 76, 255, 0.75), 0 0 28px rgba(177, 76, 255, 0.45);
+  --glow-orange: 0 0 12px rgba(255, 140, 60, 0.8), 0 0 30px rgba(255, 123, 0, 0.45);
+  --glow-gold: 0 0 14px rgba(255, 210, 122, 0.75), 0 0 32px rgba(255, 179, 71, 0.45);
+  --glow-cyan: 0 0 12px rgba(63, 224, 255, 0.85), 0 0 30px rgba(63, 224, 255, 0.45);
+  --glow-good: 0 0 12px rgba(94, 224, 138, 0.7);
+  --glow-bad: 0 0 14px rgba(255, 77, 94, 0.8), 0 0 30px rgba(255, 77, 94, 0.45);
+  --ring-focus: 0 0 0 2px #ffb347 inset, 0 0 16px rgba(255, 123, 0, 0.55);
+  --ring-cyan: 0 0 0 2px #3fe0ff inset, 0 0 16px rgba(63, 224, 255, 0.55);
+
+  /* ---- Radius scale ---- */
+  --r-xs: 6px;
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r: 16px;
+  --r-lg: 22px;
+  --r-xl: 28px;
+  --r-pill: 999px;
+  --r-circle: 50%;
+
+  /* ---- Spacing scale ---- */
+  --sp-0: 0;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* ---- Typography ---- */
+  --font-display: 'Cinzel', Georgia, serif;
+  --font-ui: 'Inter', system-ui, sans-serif;
+  --font-num: 'Inter', sans-serif;
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-md: 16px;
+  --fs-lg: 20px;
+  --fs-xl: 26px;
+  --fs-2xl: 34px;
+  --fw-reg: 500;
+  --fw-bold: 700;
+  --fw-black: 800;
+  --ls-tight: 0.01em;
+  --ls-wide: 0.06em;
+
+  /* ---- Motion ---- */
+  --dur-fast: 90ms;
+  --dur: 160ms;
+  --dur-slow: 260ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-pop: cubic-bezier(0.2, 1.35, 0.5, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* ============================================================
+     BACKWARD-COMPAT ALIASES — remap legacy global.css tokens
+     to the new vibrant palette so existing markup restyles.
+     ============================================================ */
+  --primary: #5a1fb8;
+  --accent: var(--orange);
+  --accent-2: var(--orange-2);
+  --magic: var(--magenta-2);
+  --surface: #f2ecff;
+  --bg-0: var(--bg-800);
+  --bg-1: var(--bg-700);
+  --bg-2: var(--bg-600);
+  --panel: var(--surface-1);
+  --panel-line: var(--line);
+  --text: #f2ecff;
+  --text-dim: #b9aedc;
+  --good: #5ee08a;
+  --bad: #ff4d5e;
+  --gem: #5cc8ff;
+  --coin: #ffd27a;
+  --radius: 16px;
+  --tap: 48px;
+}
+
+/* ============================================================
+   VIBRANT BACKGROUND UTILITIES
+   ============================================================ */
+.app-frame,
+.bg-app {
+  background: var(--grad-app) !important;
+}
+
+/* drifting bloom orbs + vignette behind a screen */
+.bg-vibrant {
+  position: relative;
+  background: var(--grad-app);
+}
+.bg-vibrant::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(42% 32% at 18% 12%, rgba(177, 76, 255, 0.28), transparent 70%),
+    radial-gradient(38% 28% at 84% 22%, rgba(63, 224, 255, 0.2), transparent 70%),
+    radial-gradient(46% 34% at 50% 100%, rgba(255, 123, 0, 0.18), transparent 72%);
+  z-index: 0;
+}
+.bg-vibrant::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--grad-vignette);
+  z-index: 0;
+}
+.bg-vibrant > * {
+  position: relative;
+  z-index: 1;
+}
+.bg-field {
+  background: var(--grad-field) !important;
+}
+.bg-vignette {
+  position: relative;
+}
+.bg-vignette::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--grad-vignette);
+}
+
+/* ============================================================
+   GLOSSY BUTTONS — chunky candy 3D with top-gloss overlay
+   ============================================================ */
+.btn {
+  position: relative;
+  appearance: none;
+  border: none;
+  border-radius: var(--r);
+  min-height: var(--tap);
+  padding: 0 var(--sp-5);
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-md);
+  letter-spacing: var(--ls-wide);
+  color: var(--ink-on-light);
+  background: var(--grad-cta);
+  box-shadow: var(--sh-btn-cta);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-fast) var(--ease-out), filter var(--dur-fast) var(--ease-out);
+}
+/* top gloss sheen */
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 1px 1px auto 1px;
+  height: 46%;
+  border-radius: inherit;
+  background: var(--grad-cta-hi);
+  pointer-events: none;
+}
+.btn:hover {
+  filter: brightness(1.04);
+}
+.btn:active {
+  transform: translateY(4px);
+  box-shadow: var(--sh-btn-cta-down);
+}
+.btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sh-btn-cta), var(--ring-focus);
+}
+.btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+  filter: grayscale(0.3);
+}
+.btn.full {
+  width: 100%;
+}
+
+/* magenta secondary */
+.btn.secondary {
+  color: var(--ink-on-dark);
+  background: var(--grad-magenta);
+  box-shadow: var(--sh-btn-magenta), 0 12px 28px rgba(7, 3, 18, 0.5);
+}
+.btn.secondary:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #5a1fb8, 0 4px 12px rgba(7, 3, 18, 0.5);
+}
+.btn.secondary:focus-visible {
+  box-shadow: var(--sh-btn-magenta), var(--glow-magenta);
+}
+
+/* cyan / energy variant */
+.btn.cyan {
+  color: var(--ink-on-light);
+  background: var(--grad-cyan);
+  box-shadow: var(--sh-btn-cyan), 0 12px 28px rgba(7, 3, 18, 0.5);
+}
+.btn.cyan:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #1b7fa8, 0 4px 12px rgba(7, 3, 18, 0.5);
+}
+
+/* ghost / text button */
+.btn.ghost {
+  background: transparent;
+  color: var(--text-dim);
+  box-shadow: none;
+  font-family: var(--font-ui);
+  letter-spacing: var(--ls-tight);
+}
+.btn.ghost::before {
+  display: none;
+}
+.btn.ghost:active {
+  transform: none;
+  color: var(--text);
+}
+
+/* icon button (glass) */
+.icon-btn {
+  width: var(--tap);
+  height: var(--tap);
+  border-radius: var(--r-md);
+  display: grid;
+  place-items: center;
+  background: var(--surface-glass);
+  border: 1px solid var(--line-soft);
+  color: var(--text);
+  font-size: var(--fs-lg);
+  cursor: pointer;
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--sh-1);
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.icon-btn:active {
+  transform: scale(0.94);
+}
+.icon-btn.gold {
+  border-color: var(--line-gold);
+  color: var(--gold);
+}
+
+/* ============================================================
+   GLASS PANELS / CARDS
+   ============================================================ */
+.panel {
+  position: relative;
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: var(--sp-4);
+  box-shadow: var(--sh-2);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+.panel.glass {
+  background: var(--surface-glass);
+}
+.panel.raised {
+  background: var(--surface-2);
+  border-color: var(--line-gold);
+  box-shadow: var(--sh-3), var(--glow-magenta);
+}
+.panel.sunken {
+  background: var(--surface-3);
+  border-color: var(--line-soft);
+  box-shadow: inset 0 2px 10px rgba(7, 3, 18, 0.55);
+}
+.panel.feature {
+  border-radius: var(--r-xl);
+  border-color: var(--line-gold);
+  background: var(--grad-panel);
+  box-shadow: var(--sh-3), var(--glow-gold);
+}
+
+/* generic list row */
+.li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+}
+.li .ic {
+  font-size: 26px;
+  width: 40px;
+  text-align: center;
+}
+.choice {
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--text);
+}
+.choice:active {
+  transform: scale(0.98);
+}
+.choice.sel {
+  background: var(--surface-2);
+  border-color: var(--orange-2);
+  box-shadow: var(--ring-focus);
+}
+
+/* ============================================================
+   CURRENCY CHIPS
+   ============================================================ */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-pill);
+  padding: var(--sp-1) var(--sp-3);
+  font-family: var(--font-num);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.chip.coin {
+  color: var(--coin);
+  border-color: var(--line-gold);
+}
+.chip.gem {
+  color: var(--gem);
+  border-color: var(--line-cyan);
+}
+.chip.energy {
+  color: var(--energy);
+  border-color: rgba(255, 194, 61, 0.3);
+}
+.chip .ic {
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* ============================================================
+   TABS
+   ============================================================ */
+.tabs {
+  display: flex;
+  gap: var(--sp-2);
+  padding: var(--sp-1);
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-pill);
+  margin: 0 var(--sp-4);
+}
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-pill);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-wide);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: color var(--dur) var(--ease-out), background var(--dur) var(--ease-out),
+    box-shadow var(--dur) var(--ease-out);
+}
+.tab.active {
+  color: var(--ink-on-light);
+  background: var(--grad-cta);
+  border-color: transparent;
+  box-shadow: 0 2px 8px rgba(255, 123, 0, 0.35), var(--glow-orange);
+}
+
+/* ============================================================
+   PROGRESS / XP BAR
+   ============================================================ */
+.xpbar,
+.progress {
+  position: relative;
+  height: 12px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  overflow: hidden;
+}
+.xpbar > span,
+.progress > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--grad-xp);
+  box-shadow: var(--glow-magenta);
+  transition: width var(--dur-slow) var(--ease-out);
+}
+.xpbar > span::after,
+.progress > span::after {
+  content: '';
+  position: absolute;
+  inset: 1px 1px auto 1px;
+  height: 45%;
+  border-radius: var(--r-pill);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.4), transparent);
+  pointer-events: none;
+}
+.progress.gold > span {
+  background: var(--grad-cta);
+  box-shadow: var(--glow-gold);
+}
+.progress.cyan > span {
+  background: var(--grad-cyan);
+  box-shadow: var(--glow-cyan);
+}
+
+/* HP bar (re-themed from global) */
+.hpbar {
+  height: 12px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+}
+.hpbar > span {
+  display: block;
+  height: 100%;
+  background: var(--grad-hp);
+  box-shadow: var(--glow-good);
+  transition: width var(--dur) var(--ease-out);
+}
+.hpbar.low > span {
+  background: var(--grad-hp-low);
+  box-shadow: var(--glow-bad);
+}
+.hpbar.boss > span {
+  background: var(--grad-boss-hp);
+  box-shadow: var(--glow-bad);
+}
+
+/* ============================================================
+   LEVEL BADGE
+   ============================================================ */
+.lvl-badge {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-circle);
+  background: var(--grad-magenta);
+  border: 2px solid var(--gold);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: var(--fw-black);
+  font-size: var(--fs-sm);
+  box-shadow: var(--sh-2), var(--glow-magenta);
+  flex: 0 0 auto;
+}
+.lvl-badge::before {
+  content: '';
+  position: absolute;
+  inset: 2px 2px 52% 2px;
+  border-radius: var(--r-circle);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.45), transparent);
+  pointer-events: none;
+}
+.lvl-badge.gold {
+  background: var(--grad-cta);
+  color: var(--ink-on-light);
+  box-shadow: var(--sh-2), var(--glow-gold);
+}
+.lvl-badge.sm {
+  width: 26px;
+  height: 26px;
+  font-size: var(--fs-xs);
+  border-width: 1.5px;
+}
+
+/* ============================================================
+   TOP BAR (player level + xp + currencies)
+   ============================================================ */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: calc(env(safe-area-inset-top) + var(--sp-2)) var(--sp-3) var(--sp-2);
+  background: linear-gradient(180deg, rgba(28, 16, 62, 0.92), rgba(28, 16, 62, 0));
+}
+.topbar .lvl-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  flex: 1;
+}
+.topbar .lvl-xp {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 64px;
+  flex: 1;
+  max-width: 130px;
+}
+.topbar .lvl-xp .xpbar {
+  height: 7px;
+}
+.topbar .lvl-xp small {
+  font-size: 9px;
+  color: var(--text-mute);
+  letter-spacing: var(--ls-wide);
+  text-transform: uppercase;
+}
+.topbar .currencies {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* ============================================================
+   BOTTOM NAV
+   ============================================================ */
+.bottom-nav {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-2) calc(env(safe-area-inset-bottom) + var(--sp-2));
+  background: linear-gradient(0deg, rgba(18, 10, 42, 0.96), rgba(18, 10, 42, 0.6));
+  border-top: 1px solid var(--line);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.nav-item {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: var(--sp-2) var(--sp-1);
+  border: none;
+  background: transparent;
+  color: var(--text-mute);
+  font-family: var(--font-ui);
+  font-weight: var(--fw-bold);
+  font-size: 10px;
+  letter-spacing: var(--ls-tight);
+  cursor: pointer;
+  border-radius: var(--r-md);
+  transition: color var(--dur) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.nav-item .nav-ic {
+  font-size: 22px;
+  line-height: 1;
+  transition: transform var(--dur) var(--ease-pop), filter var(--dur) var(--ease-out);
+}
+.nav-item:active {
+  transform: scale(0.92);
+}
+.nav-item.active {
+  color: var(--gold);
+}
+.nav-item.active .nav-ic {
+  transform: translateY(-2px) scale(1.12);
+  filter: drop-shadow(0 0 8px rgba(255, 210, 122, 0.7));
+}
+/* active "home/crown" lift pedestal */
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-circle);
+  background: radial-gradient(circle, rgba(255, 179, 71, 0.28), transparent 70%);
+  pointer-events: none;
+}
+.nav-item .badge {
+  position: absolute;
+  top: 2px;
+  right: 50%;
+  transform: translateX(18px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--bad);
+  color: #fff;
+  font-size: 9px;
+  font-weight: var(--fw-black);
+  display: grid;
+  place-items: center;
+  box-shadow: var(--glow-bad);
+}
+
+/* ============================================================
+   MODAL POLISH
+   ============================================================ */
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+  padding: var(--sp-5);
+  animation: fade var(--dur) var(--ease-out);
+}
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+.modal {
+  width: 100%;
+  max-width: 420px;
+  background: var(--grad-panel);
+  border: 1px solid var(--line-gold);
+  border-radius: var(--r-lg);
+  padding: var(--sp-6);
+  box-shadow: var(--sh-4), 0 0 40px rgba(177, 76, 255, 0.18);
+  animation: pop var(--dur-slow) var(--ease-pop);
+}
+@keyframes pop {
+  from {
+    transform: scale(0.9);
+    opacity: 0;
+  }
+}
+.modal h2,
+.modal h3 {
+  font-family: var(--font-display);
+  letter-spacing: var(--ls-wide);
+}
+
+/* ============================================================
+   MISC RE-THEMED ELEMENTS
+   ============================================================ */
+.wave-pill {
+  background: var(--surface-glass);
+  border: 1px solid var(--line-cyan);
+  border-radius: var(--r-pill);
+  padding: var(--sp-1) var(--sp-4);
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-wide);
+  color: var(--text);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  box-shadow: var(--sh-1);
+}
+
+.toggle {
+  width: 52px;
+  height: 30px;
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+}
+.toggle.on {
+  background: var(--grad-cta);
+  box-shadow: var(--glow-orange) inset, var(--glow-orange);
+}
+.toggle > span {
+  box-shadow: var(--sh-1);
+}
+
+.tag {
+  color: var(--orange-2);
+  text-shadow: 0 0 8px rgba(255, 179, 71, 0.4);
+}
+
+.stat-pill {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+  background: var(--surface-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-xs);
+  padding: 2px 6px;
+}
+
+/* event / season banner */
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--grad-banner);
+  color: #fff;
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--ls-wide);
+  box-shadow: var(--sh-2), var(--glow-magenta);
+  position: relative;
+  overflow: hidden;
+}
+.banner::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.25), transparent);
+  pointer-events: none;
+}
+
+/* gold extruded title text fill */
+.title-3d {
+  font-family: var(--font-display);
+  font-weight: var(--fw-black);
+  background: var(--grad-gold-text);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 0 var(--gold-deep)) drop-shadow(0 0 18px rgba(255, 179, 71, 0.5));
+}
+
+/* floating damage number helper */
+.dmg-num {
+  font-family: var(--font-num);
+  font-weight: var(--fw-black);
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow: var(--glow-orange);
+}
+.dmg-num.crit {
+  color: #ffe15a;
+}
+.dmg-num.big {
+  color: #ff8a3d;
+}
+
+/* combo banner */
+.combo-banner {
+  font-family: var(--font-display);
+  font-weight: var(--fw-black);
+  color: var(--orange-2);
+  text-shadow: var(--glow-orange);
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: var(--dur-fast) !important;
+    transition-duration: var(--dur-fast) !important;
+  }
+}
+:root.reduced-motion *,
+:root.reduced-motion *::before,
+:root.reduced-motion *::after {
+  animation-duration: 0.01ms !important;
+  transition-duration: var(--dur-fast) !important;
+}

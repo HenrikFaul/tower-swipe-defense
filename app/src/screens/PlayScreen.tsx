@@ -5,7 +5,8 @@ import { renderIso } from '../engine/isoRender'
 import { TOWERS, TOWER_IDS, type TowerId } from '../data/towers'
 import { POWERS } from '../data/powers'
 import type { EnemyType } from '../data/enemies'
-import { VictoryModal, PauseModal, GameOverModal } from '../components/IsoModals'
+import { PauseModal, GameOverModal } from '../components/IsoModals'
+import VictoryPro from '../components/VictoryPro'
 import { playSfx } from '../lib/audio'
 import { submitRun } from '../lib/cloud'
 
@@ -260,7 +261,15 @@ export default function PlayScreen() {
           )}
 
           {hud.phase === 'paused' && game && <PauseModal game={game} onQuit={() => finalize(false)} />}
-          {hud.phase === 'cleared' && game && <VictoryModal game={game} hud={hud} />}
+          {hud.phase === 'cleared' && game && hud.cleared && (
+            <VictoryPro
+              wave={hud.cleared.wave}
+              stars={hud.cleared.stars}
+              coins={hud.cleared.coins}
+              gems={hud.cleared.gems}
+              onContinue={() => game.continueAfterClear()}
+            />
+          )}
           {hud.phase === 'gameover' && <GameOverModal hud={hud} onClaim={(d) => finalize(d)} />}
 
           <div className="fps">{hud.fps} fps</div>

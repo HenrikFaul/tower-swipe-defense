@@ -6,7 +6,18 @@ import type { RunModifiers } from '../engine/isoGame'
 import { setAudioEnabled } from '../lib/audio'
 import { setHapticsEnabled } from '../lib/haptics'
 
-export type Screen = 'menu' | 'play' | 'upgrades' | 'daily' | 'leaderboard' | 'settings'
+export type Screen =
+  | 'splash'
+  | 'menu'
+  | 'play'
+  | 'upgrades'
+  | 'daily'
+  | 'rewards'
+  | 'leaderboard'
+  | 'settings'
+  | 'shop'
+  | 'worldmap'
+  | 'battlepass'
 
 export interface RunParams {
   mode: 'normal' | 'daily'
@@ -52,7 +63,7 @@ setAudioEnabled(initial.settings.sound)
 setHapticsEnabled(initial.settings.haptics)
 
 export const useGameStore = create<StoreState>((set, get) => ({
-  screen: 'menu',
+  screen: 'splash',
   meta: initial.meta,
   settings: initial.settings,
   runs: initial.runs,

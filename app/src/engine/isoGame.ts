@@ -62,6 +62,8 @@ export interface PathEnemy {
 interface Proj {
   x: number
   y: number
+  px: number
+  py: number
   target: PathEnemy | null
   tc: number
   tr: number
@@ -755,6 +757,8 @@ export class IsoGame {
           this.projectiles.push({
             x: ts.x,
             y: ts.y - 18,
+            px: ts.x,
+            py: ts.y - 18,
             target: best,
             tc: best.c,
             tr: best.r,
@@ -824,6 +828,8 @@ export class IsoGame {
         this.projectiles.splice(i, 1)
         continue
       }
+      p.px = p.x
+      p.py = p.y
       p.x += (dx / d) * p.speed * dt
       p.y += (dy / d) * p.speed * dt
       if (p.kind === 'cannon' && this.rng() < 0.4) this.spawnParticle(p.x, p.y, 0x999999, 'smoke')
