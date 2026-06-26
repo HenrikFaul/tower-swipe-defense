@@ -118,10 +118,10 @@ export default function PlayScreen() {
       mode: pendingRun?.mode ?? ('normal' as const),
       wave: g.wave,
       score: Math.floor(g.score),
-      durationMs: 0,
+      durationMs: Math.round(g.time * 1000),
       date: new Date().toISOString(),
     }
-    recordRun(run, Math.floor(g.coinsEarned), 0, doubled)
+    recordRun(run, Math.floor(g.coinsEarned), Math.floor(g.gemsEarned), doubled)
     void submitRun(run, {}, pendingRun?.seed)
     playSfx('ui_tap')
     go('menu')
@@ -175,24 +175,32 @@ export default function PlayScreen() {
             </div>
           )}
 
-          {/* powers */}
-          {(hud.phase === 'wave' || hud.phase === 'build') && (
+          {/* powers — Meteor is swipe-cast (indicator only); Freeze/Gold-rush are tap */}
+          {hud.phase === 'wave' && (
             <div className="powers">
-              {hud.powers.map((pw) => (
-                <button
-                  key={pw.id}
-                  className={'power-btn' + (pw.active ? ' active' : '')}
-                  disabled={!pw.ready || (pw.id !== 'meteor' && hud.phase !== 'wave')}
-                  onClick={() => {
-                    if (pw.id === 'freeze') game?.castFreeze()
-                    else if (pw.id === 'goldrush') game?.castGoldRush()
-                  }}
-                  aria-label={POWERS[pw.id].name}
-                >
-                  <span>{POWERS[pw.id].icon}</span>
-                  {!pw.ready && <span className="cd">{Math.ceil(pw.cd)}</span>}
-                </button>
-              ))}
+              {hud.powers.map((pw) =>
+                pw.id === 'meteor' ? (
+                  <div key={pw.id} className={'power-btn meteor' + (pw.ready ? ' ready' : '')} aria-label="Meteor — swipe the field to aim">
+                    <span>{POWERS[pw.id].icon}</span>
+                    <span className="hint">swipe</span>
+                    {!pw.ready && <span className="cd">{Math.ceil(pw.cd)}</span>}
+                  </div>
+                ) : (
+                  <button
+                    key={pw.id}
+                    className={'power-btn' + (pw.active ? ' active' : '')}
+                    disabled={!pw.ready}
+                    onClick={() => {
+                      if (pw.id === 'freeze') game?.castFreeze()
+                      else if (pw.id === 'goldrush') game?.castGoldRush()
+                    }}
+                    aria-label={POWERS[pw.id].name}
+                  >
+                    <span>{POWERS[pw.id].icon}</span>
+                    {!pw.ready && <span className="cd">{Math.ceil(pw.cd)}</span>}
+                  </button>
+                ),
+              )}
             </div>
           )}
 

@@ -1,6 +1,6 @@
 import { ENEMIES, enemyTypesForWave, type EnemyDef, type EnemyType } from '../data/enemies'
 import { rollDamage, TOWERS, type TowerDef, type TowerId } from '../data/towers'
-import { isBuildable, keepOf, pickMap, spawnOf, type GameMap } from '../data/maps'
+import { isBuildable, keepOf, pickMap, type GameMap } from '../data/maps'
 import { POWERS, type PowerId } from '../data/powers'
 import { waveCoinDrop, waveEnemyCount, waveEnemyHp } from '../lib/balance'
 import { mulberry32 } from '../lib/rng'
@@ -142,7 +142,6 @@ let enemySeq = 1
 let towerSeq = 1
 
 const METEOR_RADIUS = 1.7
-const METEOR_DMG = 130
 
 export class IsoGame {
   phase: Phase = 'build'
@@ -162,6 +161,7 @@ export class IsoGame {
   gold: number
   score = 0
   coinsEarned = 0
+  gemsEarned = 0
 
   selectedBuild: TowerId | null = null
   selectedTowerId: number | null = null
@@ -319,7 +319,8 @@ export class IsoGame {
   private buildSpawnQueue(wave: number) {
     const isBoss = wave % 10 === 0
     const q: EnemyType[] = []
-    const count = waveEnemyCount(wave)
+    // Lighter escort on boss waves so the boss is the focus, not a swarm.
+    const count = isBoss ? Math.ceil(waveEnemyCount(wave) / 2) : waveEnemyCount(wave)
     for (let i = 0; i < count; i++) q.push(this.pickType(wave))
     if (isBoss) q.push(wave % 30 === 0 ? 'dragon' : 'ogre')
     this.spawnInterval = isBoss ? 0.7 : Math.max(0.42, 0.95 - wave * 0.02)
@@ -334,7 +335,14 @@ export class IsoGame {
   private spawnEnemy(type: EnemyType, prog = 0, hpScale = 1, noSplit = false) {
     const def = ENEMIES[type]
     const baseHp = waveEnemyHp(this.wave) * def.hpMul * (def.boss ? 1.4 : 1) * hpScale
-    const sp = spawnOf(this.map)
+    // Position from the path so split children appear where they died, not at
+    // the portal (avoids a one-frame teleport / wrong aura that same step).
+    const path = this.map.path
+    const pc = Math.max(0, Math.min(path.length - 1, prog))
+    const seg = Math.floor(pc)
+    const f = pc - seg
+    const a = path[seg]
+    const b = path[Math.min(path.length - 1, seg + 1)]
     const e: PathEnemy = {
       id: enemySeq++,
       type,
@@ -342,8 +350,8 @@ export class IsoGame {
       hp: baseHp,
       maxHp: baseHp,
       prog,
-      c: sp.c,
-      r: sp.r,
+      c: a.c + (b.c - a.c) * f,
+      r: a.r + (b.r - a.r) * f,
       baseSpeed: def.speed,
       slowT: 0,
       freezeT: 0,
@@ -371,6 +379,7 @@ export class IsoGame {
     const gems = this.wave % 10 === 0 ? 12 : stars >= 3 ? 2 : 0
     this.lastReward = { coins, gems, interest }
     this.coinsEarned += coins
+    this.gemsEarned += gems
     playSfx('win')
     haptics.success()
     this.onChange()
@@ -394,7 +403,7 @@ export class IsoGame {
     this.dragMoved = false
     const g = screenToGrid(x, y, this.view)
     this.downCell = { c: Math.round(g.c), r: Math.round(g.r) }
-    if (!this.selectedBuild && this.meteorCd <= 0) {
+    if (!this.selectedBuild && this.meteorCd <= 0 && this.phase === 'wave') {
       this.aimActive = true
       this.aim = { x, y }
     }
@@ -516,12 +525,15 @@ export class IsoGame {
 
   // ---- powers ------------------------------------------------------------
   private castMeteor(x: number, y: number) {
+    if (this.phase !== 'wave') return
     this.meteorCd = POWERS.meteor.cooldown
     const g = screenToGrid(x, y, this.view)
+    // Scales with wave so it stays a strong nuke without trivializing/fizzling.
+    const dmg = waveEnemyHp(this.wave) * 2.6 + 80
     let hits = 0
     for (const e of [...this.enemies]) {
       if (Math.hypot(e.c - g.c, e.r - g.r) <= METEOR_RADIUS) {
-        this.damageEnemy(e, METEOR_DMG, true, true)
+        this.damageEnemy(e, dmg, true, true)
         if (e.hp <= 0) this.killEnemy(e, this.enemies.indexOf(e))
         hits++
       }
@@ -823,12 +835,18 @@ export class IsoGame {
     const apply = (e: PathEnemy) => {
       this.damageEnemy(e, p.dmg, p.magic, !!p.pierceShield)
       if (p.slow) {
-        // double-slow → brief freeze (synergy)
-        if (e.slowT > 0) e.freezeT = Math.max(e.freezeT, 0.6)
-        e.slowT = Math.max(e.slowT, p.slow.dur)
+        // double-slow → brief freeze (synergy); consume the slow so it isn't
+        // immediately re-applied on top of the freeze.
+        if (e.slowT > 0) {
+          e.freezeT = Math.max(e.freezeT, 0.6)
+          e.slowT = 0
+        } else {
+          e.slowT = p.slow.dur
+        }
       }
       if (p.poison) {
-        e.poisonDps = Math.max(e.poisonDps, p.poison.dps) + (e.poisonT > 0 ? p.poison.dps * 0.25 : 0)
+        // stacked DoT is bounded (1.25× base), never accumulates unboundedly.
+        e.poisonDps = p.poison.dps * (e.poisonT > 0 ? 1.25 : 1)
         e.poisonT = Math.max(e.poisonT, p.poison.dur)
       }
       if (p.burn) {
@@ -842,7 +860,7 @@ export class IsoGame {
       }
       if (e.hp <= 0) this.killEnemy(e, this.enemies.indexOf(e))
     }
-    if (p.splash && (p.target || true)) {
+    if (p.splash) {
       const cx = p.tc
       const cy = p.tr
       this.spawnParticle(p.x, p.y, 0xffb066, 'ring')
@@ -850,8 +868,21 @@ export class IsoGame {
       for (const e of [...this.enemies]) {
         if (Math.hypot(e.c - cx, e.r - cy) <= p.splash) apply(e)
       }
-    } else if (p.target && this.enemies.includes(p.target)) {
-      apply(p.target)
+    } else {
+      // single-target: if the original target died mid-flight, hit whatever is
+      // now closest to the impact point instead of silently wasting the shot.
+      let tgt = p.target && this.enemies.includes(p.target) ? p.target : null
+      if (!tgt) {
+        let bd = 0.8
+        for (const e of this.enemies) {
+          const d = Math.hypot(e.c - p.tc, e.r - p.tr)
+          if (d < bd) {
+            bd = d
+            tgt = e
+          }
+        }
+      }
+      if (tgt) apply(tgt)
     }
   }
 
@@ -875,10 +906,10 @@ export class IsoGame {
     for (let i = 0; i < 4; i++) this.spawnParticle(s.x, s.y, e.def.color, 'spark')
     this.spawnText(s.x, s.y - 12, `+${Math.round(gold)}`)
     playSfx('enemy_dead')
-    // split mechanic
-    if (e.def.splitInto && !e.noSplit) {
+    // split mechanic — gated off the first couple waves so early defenses cope
+    if (e.def.splitInto && !e.noSplit && this.wave >= 3) {
       for (let i = 0; i < e.def.splitInto.count; i++) {
-        this.spawnEnemy(e.def.splitInto.type, Math.max(0, e.prog - 0.15 * i), 1, true)
+        this.spawnEnemy(e.def.splitInto.type, Math.max(0, e.prog - 0.15 * i), 0.6, true)
       }
     }
     if (e.def.boss) {
@@ -936,7 +967,10 @@ export class IsoGame {
 
   get shakeOffset() {
     if (this.shake <= 0) return { x: 0, y: 0 }
+    // Time-derived so the render path never consumes the deterministic
+    // simulation RNG (which would framerate-couple combat outcomes).
     const s = this.shake * 6
-    return { x: (this.rng() - 0.5) * s, y: (this.rng() - 0.5) * s }
+    const t = this.time
+    return { x: Math.sin(t * 91.7) * s, y: Math.cos(t * 73.3) * s }
   }
 }

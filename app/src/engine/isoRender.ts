@@ -3,16 +3,23 @@ import { TILE_H, TILE_W, TILE_LIFT, gridToScreen } from './iso'
 import { hex } from './vec'
 import type { IsoGame, PathEnemy, PlacedTower } from './isoGame'
 
+let bgCache: { key: string; grad: CanvasGradient } | null = null
+
 export function renderIso(ctx: CanvasRenderingContext2D, game: IsoGame) {
   const { w, h, view, map } = game
   const th = map.theme
   ctx.clearRect(0, 0, w, h)
 
-  const bg = ctx.createRadialGradient(w / 2, h * 0.46, 60, w / 2, h * 0.46, Math.max(w, h) * 0.85)
-  bg.addColorStop(0, th.bg0)
-  bg.addColorStop(0.6, th.bg1)
-  bg.addColorStop(1, th.bg2)
-  ctx.fillStyle = bg
+  // cache the background gradient (only changes on resize / theme change)
+  const key = `${w}x${h}|${th.name}`
+  if (!bgCache || bgCache.key !== key) {
+    const g = ctx.createRadialGradient(w / 2, h * 0.46, 60, w / 2, h * 0.46, Math.max(w, h) * 0.85)
+    g.addColorStop(0, th.bg0)
+    g.addColorStop(0.6, th.bg1)
+    g.addColorStop(1, th.bg2)
+    bgCache = { key, grad: g }
+  }
+  ctx.fillStyle = bgCache.grad
   ctx.fillRect(0, 0, w, h)
 
   // ambient floaties
