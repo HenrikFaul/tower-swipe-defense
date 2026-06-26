@@ -22,7 +22,7 @@ export default function SettingsScreen() {
   const rows: { key: keyof Settings; label: string; desc: string }[] = [
     { key: 'sound', label: 'Sound', desc: 'Combat & UI audio' },
     { key: 'haptics', label: 'Haptics', desc: 'Vibration feedback' },
-    { key: 'autoFire', label: 'Auto-Fire', desc: 'Hold to auto-shoot at your aim' },
+    { key: 'autoStart', label: 'Auto-start waves', desc: 'Skip the build pause between waves' },
     { key: 'reducedMotion', label: 'Reduced Motion', desc: 'Fewer particles & effects' },
   ]
 

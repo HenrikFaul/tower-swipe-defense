@@ -422,3 +422,130 @@ h3,
   margin: 0;
   font-size: 22px;
 }
+
+/* ---- iso TD: build bar ---- */
+.build-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 10px);
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px;
+}
+.build-cards {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  justify-content: center;
+}
+.build-card {
+  flex: 1;
+  max-width: 64px;
+  aspect-ratio: 1 / 1.15;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #1c3a3d, #122a2d);
+  border: 1px solid var(--panel-line);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  color: var(--text);
+  padding: 4px;
+}
+.build-card .bi {
+  font-size: 22px;
+  line-height: 1;
+}
+.build-card .bc {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--coin);
+}
+.build-card.sel {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent) inset, 0 0 14px rgba(255, 123, 0, 0.4);
+  transform: translateY(-4px);
+}
+.build-card.poor {
+  opacity: 0.45;
+}
+.start-wave {
+  width: 100%;
+  max-width: 420px;
+}
+
+.tower-panel {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--panel-line);
+  border-radius: 16px;
+  padding: 10px 12px;
+}
+.tower-panel .btn {
+  min-height: 42px;
+  font-size: 14px;
+  padding: 0 12px;
+}
+
+.power-btn {
+  position: absolute;
+  right: 14px;
+  bottom: calc(env(safe-area-inset-bottom) + 120px);
+  z-index: 6;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-2);
+  background: radial-gradient(circle at 40% 35%, #ff9a4d, #b85600);
+  color: #fff;
+  font-size: 26px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+}
+.power-btn:disabled {
+  filter: grayscale(0.7) brightness(0.6);
+}
+.power-btn .cd {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 800;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 50%;
+}
+
+.crate {
+  font-size: 64px;
+  margin: 4px 0 16px;
+  filter: drop-shadow(0 0 24px rgba(255, 179, 71, 0.7));
+  animation: crate-pop 0.5s cubic-bezier(0.2, 1.4, 0.5, 1);
+}
+@keyframes crate-pop {
+  from {
+    transform: scale(0.4) rotate(-8deg);
+    opacity: 0;
+  }
+}
+
+/* ---- iso TD: tower/relic list rows ---- */
+.stat-pill {
+  font-size: 11px;
+  color: var(--text-dim);
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  padding: 2px 6px;
+}

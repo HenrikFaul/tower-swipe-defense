@@ -1,33 +1,25 @@
 import { create } from 'zustand'
-import {
-  loadSave,
-  persist,
-  type LocalRun,
-  type MetaState,
-  type Settings,
-} from '../lib/storage'
-import {
-  META_UPGRADES,
-  metaUpgradeCost,
-  skinById,
-  SKINS,
-} from '../data/upgrades'
-import type { MetaUpgradeId } from '../data/types'
+import { loadSave, persist, type LocalRun, type MetaState, type Settings } from '../lib/storage'
+import { TOWERS, type TowerId } from '../data/towers'
+import { RELICS, relicById } from '../data/relics'
+import type { RunModifiers } from '../engine/isoGame'
 import { setAudioEnabled } from '../lib/audio'
 import { setHapticsEnabled } from '../lib/haptics'
 
-export type Screen =
-  | 'menu'
-  | 'play'
-  | 'upgrades'
-  | 'skins'
-  | 'daily'
-  | 'leaderboard'
-  | 'settings'
+export type Screen = 'menu' | 'play' | 'upgrades' | 'daily' | 'leaderboard' | 'settings'
 
 export interface RunParams {
   mode: 'normal' | 'daily'
   seed: number
+}
+
+const BASE_LIVES = 20
+const BASE_GOLD = 250
+
+// Permanent tower upgrade: +8% damage per level, max 5, cost scales.
+const TOWER_LEVEL_MAX = 5
+export function towerLevelCost(level: number): number {
+  return Math.floor(140 * Math.pow(1.55, level))
 }
 
 interface StoreState {
@@ -35,31 +27,19 @@ interface StoreState {
   meta: MetaState
   settings: Settings
   runs: LocalRun[]
-  /** how many times the player has failed on each wave (DDA, AI_PROMPT §5.1) */
-  waveDeaths: Record<number, number>
   pendingRun: RunParams | null
 
   go: (s: Screen) => void
   startRun: (p: RunParams) => void
 
-  // economy
-  buyMetaUpgrade: (id: MetaUpgradeId) => boolean
-  buySkin: (id: string) => boolean
-  selectSkin: (id: string) => void
+  buyTowerLevel: (id: TowerId) => boolean
+  buyRelic: (id: string) => boolean
   buyNoAds: () => void
   grantDailySpin: () => number
-
-  // settings
   setSetting: <K extends keyof Settings>(k: K, v: Settings[K]) => void
+  recordRun: (run: LocalRun, coins: number, gems: number, doubled: boolean) => void
 
-  // run results — `died` distinguishes a tower-fall (counts toward DDA) from
-  // a voluntary quit (does not).
-  recordRun: (run: LocalRun, coinsEarned: number, doubled: boolean, died: boolean) => void
-
-  ddaForWave: () => { ddaDmgMul: number; ddaEnemyHpMul: number }
-  maxHpForRun: () => number
-  startCoinsForRun: () => number
-  reviveHealPct: () => number
+  runModifiers: () => RunModifiers
 }
 
 function save(get: () => StoreState) {
@@ -76,53 +56,29 @@ export const useGameStore = create<StoreState>((set, get) => ({
   meta: initial.meta,
   settings: initial.settings,
   runs: initial.runs,
-  waveDeaths: {},
   pendingRun: null,
 
   go: (screen) => set({ screen }),
-
   startRun: (p) => set({ pendingRun: p, screen: 'play' }),
 
-  buyMetaUpgrade: (id) => {
+  buyTowerLevel: (id) => {
     const { meta } = get()
-    const def = META_UPGRADES[id]
-    const level = meta.metaUpgrades[id] ?? 0
-    if (level >= def.maxLevel) return false
-    const cost = metaUpgradeCost(def, level)
+    const level = meta.towerLevels[id] ?? 0
+    if (level >= TOWER_LEVEL_MAX) return false
+    const cost = towerLevelCost(level)
     if (meta.coins < cost) return false
-    set({
-      meta: {
-        ...meta,
-        coins: meta.coins - cost,
-        metaUpgrades: { ...meta.metaUpgrades, [id]: level + 1 },
-      },
-    })
+    set({ meta: { ...meta, coins: meta.coins - cost, towerLevels: { ...meta.towerLevels, [id]: level + 1 } } })
     save(get)
     return true
   },
 
-  buySkin: (id) => {
+  buyRelic: (id) => {
     const { meta } = get()
-    const skin = skinById(id)
-    if (meta.ownedSkins.includes(id)) return false
-    if (meta.gems < skin.price) return false
-    set({
-      meta: {
-        ...meta,
-        gems: meta.gems - skin.price,
-        ownedSkins: [...meta.ownedSkins, id],
-        currentSkin: id,
-      },
-    })
+    const relic = relicById(id)
+    if (!relic || meta.relics.includes(id) || meta.gems < relic.price) return false
+    set({ meta: { ...meta, gems: meta.gems - relic.price, relics: [...meta.relics, id] } })
     save(get)
     return true
-  },
-
-  selectSkin: (id) => {
-    const { meta } = get()
-    if (!meta.ownedSkins.includes(id)) return
-    set({ meta: { ...meta, currentSkin: id } })
-    save(get)
   },
 
   buyNoAds: () => {
@@ -131,7 +87,7 @@ export const useGameStore = create<StoreState>((set, get) => ({
   },
 
   grantDailySpin: () => {
-    const reward = 50 + Math.floor(Math.random() * 451) // 50–500
+    const reward = 50 + Math.floor(Math.random() * 451)
     const { meta } = get()
     set({ meta: { ...meta, coins: meta.coins + reward } })
     save(get)
@@ -146,65 +102,49 @@ export const useGameStore = create<StoreState>((set, get) => ({
     save(get)
   },
 
-  recordRun: (run, coinsEarned, doubled, died) => {
-    const { meta, runs, waveDeaths } = get()
-    const total = doubled ? coinsEarned * 2 : coinsEarned
+  recordRun: (run, coins, gems, doubled) => {
+    const { meta, runs } = get()
+    const totalCoins = doubled ? coins * 2 : coins
     const isDaily = run.mode === 'daily'
-    const newRuns = [...runs, run]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 50)
-    const newBestWave = Math.max(meta.bestWave, run.wave)
-
-    // DDA bookkeeping (AI_PROMPT §5.1): the compensation must be per-tier and
-    // temporary. Drop death counts for any wave the player has now cleared
-    // (< the best wave reached), and only register a new failure on a genuine
-    // tower-fall — not a voluntary quit.
-    const nextDeaths: Record<number, number> = {}
-    for (const [w, c] of Object.entries(waveDeaths)) {
-      if (Number(w) >= newBestWave) nextDeaths[Number(w)] = c
-    }
-    if (died) nextDeaths[run.wave] = (nextDeaths[run.wave] ?? 0) + 1
-
+    const newRuns = [...runs, run].sort((a, b) => b.score - a.score).slice(0, 50)
     set({
       meta: {
         ...meta,
-        coins: meta.coins + total,
-        gems: meta.gems + (run.wave >= 10 ? Math.floor(run.wave / 10) * 2 : 0),
-        bestWave: newBestWave,
+        coins: meta.coins + totalCoins,
+        gems: meta.gems + gems,
+        bestWave: Math.max(meta.bestWave, run.wave),
         bestScore: Math.max(meta.bestScore, run.score),
         totalRuns: meta.totalRuns + 1,
         dailyBestWave: isDaily ? Math.max(meta.dailyBestWave, run.wave) : meta.dailyBestWave,
         lastDailyDate: isDaily ? new Date().toISOString().slice(0, 10) : meta.lastDailyDate,
       },
       runs: newRuns,
-      waveDeaths: nextDeaths,
     })
     save(get)
   },
 
-  ddaForWave: () => {
-    const { waveDeaths, meta } = get()
-    // Stuck = ≥3 failures on a wave the player still hasn't cleared.
-    const stuck = Object.entries(waveDeaths).some(
-      ([w, c]) => c >= 3 && Number(w) > meta.bestWave - 1,
-    )
-    return stuck ? { ddaDmgMul: 1.15, ddaEnemyHpMul: 0.9 } : { ddaDmgMul: 1, ddaEnemyHpMul: 1 }
-  },
-
-  maxHpForRun: () => {
+  runModifiers: () => {
     const { meta } = get()
-    return 100 + 20 * meta.towerLevel + (meta.metaUpgrades.towerhp ?? 0) * 20
-  },
-
-  startCoinsForRun: () => {
-    const { meta } = get()
-    return (meta.metaUpgrades.startcoins ?? 0) * 40
-  },
-
-  reviveHealPct: () => {
-    const { meta } = get()
-    return 0.5 + (meta.metaUpgrades.reviveheal ?? 0) * 0.1
+    const mods: RunModifiers = {
+      dmgMul: 0,
+      goldStart: BASE_GOLD,
+      livesStart: BASE_LIVES,
+      rangeMul: 0,
+      goldMul: 0,
+      towerMetaLevels: meta.towerLevels,
+    }
+    for (const id of meta.relics) {
+      const r = relicById(id)
+      if (!r) continue
+      const e = r.effect
+      if (e.dmgMul) mods.dmgMul += e.dmgMul
+      if (e.goldStart) mods.goldStart += e.goldStart
+      if (e.livesStart) mods.livesStart += e.livesStart
+      if (e.rangeMul) mods.rangeMul += e.rangeMul
+      if (e.goldMul) mods.goldMul += e.goldMul
+    }
+    return mods
   },
 }))
 
-export { SKINS }
+export { TOWERS, RELICS, TOWER_LEVEL_MAX }

@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../store/gameStore'
-import { Game, type Hud } from '../engine/game'
-import { render } from '../engine/render'
-import { BossIntroModal, PauseModal, ResultsModal, ShopModal } from '../components/GameModals'
+import { IsoGame, type Hud } from '../engine/isoGame'
+import { renderIso } from '../engine/isoRender'
+import { TOWERS, TOWER_IDS, type TowerId } from '../data/towers'
+import { VictoryModal, PauseModal, GameOverModal } from '../components/IsoModals'
 import { playSfx } from '../lib/audio'
 import { submitRun } from '../lib/cloud'
 
 export default function PlayScreen() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
-  const gameRef = useRef<Game | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const gameRef = useRef<IsoGame | null>(null)
   const recordedRef = useRef(false)
 
   const pendingRun = useGameStore((s) => s.pendingRun)
+  const settings = useGameStore((s) => s.settings)
   const go = useGameStore((s) => s.go)
   const recordRun = useGameStore((s) => s.recordRun)
-  const store = useGameStore
+  const runModifiers = useGameStore((s) => s.runModifiers)
 
   const [hud, setHud] = useState<Hud | null>(null)
 
@@ -25,53 +27,44 @@ export default function PlayScreen() {
     const ctx = canvas.getContext('2d', { alpha: false })!
     const run = pendingRun ?? { mode: 'normal' as const, seed: (Math.random() * 1e9) | 0 }
 
-    const s = store.getState()
-    const dda = s.ddaForWave()
-    const game = new Game({
-      width: wrap.clientWidth,
-      height: wrap.clientHeight,
+    const game = new IsoGame({
       seed: run.seed,
-      mode: run.mode,
-      config: {
-        skinId: s.meta.currentSkin,
-        metaUpgrades: s.meta.metaUpgrades,
-        ddaDmgMul: dda.ddaDmgMul,
-        ddaEnemyHpMul: dda.ddaEnemyHpMul,
-      },
-      maxHp: s.maxHpForRun(),
-      startCoins: s.startCoinsForRun(),
-      autoFire: s.settings.autoFire,
-      reducedMotion: s.settings.reducedMotion,
-      reviveHealPct: s.reviveHealPct(),
+      mods: runModifiers(),
       onChange: () => setHud(game.getHud()),
     })
     gameRef.current = game
 
     const dpr = Math.min(2, window.devicePixelRatio || 1)
     const resize = () => {
-      const w = wrap.clientWidth
-      const h = wrap.clientHeight
-      canvas.width = w * dpr
-      canvas.height = h * dpr
-      canvas.style.width = w + 'px'
-      canvas.style.height = h + 'px'
-      game.resize(w, h)
+      const cw = wrap.clientWidth
+      const ch = wrap.clientHeight
+      canvas.width = cw * dpr
+      canvas.height = ch * dpr
+      canvas.style.width = cw + 'px'
+      canvas.style.height = ch + 'px'
+      game.resize(cw, ch)
     }
     resize()
     const ro = new ResizeObserver(resize)
     ro.observe(wrap)
 
-    // pointer input
     const toLocal = (e: PointerEvent) => {
-      const r = canvas.getBoundingClientRect()
-      return { x: e.clientX - r.left, y: e.clientY - r.top }
+      const rect = canvas.getBoundingClientRect()
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top }
     }
     const down = (e: PointerEvent) => {
       canvas.setPointerCapture(e.pointerId)
-      game.pointerDownAt(toLocal(e))
+      const p = toLocal(e)
+      game.pointerDown(p.x, p.y)
     }
-    const move = (e: PointerEvent) => game.pointerMoveAt(toLocal(e))
-    const up = () => game.pointerUp()
+    const move = (e: PointerEvent) => {
+      const p = toLocal(e)
+      game.pointerMove(p.x, p.y)
+    }
+    const up = (e: PointerEvent) => {
+      const p = toLocal(e)
+      game.pointerUp(p.x, p.y)
+    }
     canvas.addEventListener('pointerdown', down)
     canvas.addEventListener('pointermove', move)
     canvas.addEventListener('pointerup', up)
@@ -80,7 +73,6 @@ export default function PlayScreen() {
     game.start()
     setHud(game.getHud())
 
-    // render + sim loop
     let raf = 0
     let last = performance.now()
     const frame = (now: number) => {
@@ -88,15 +80,11 @@ export default function PlayScreen() {
       last = now
       game.update(dt)
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      render(ctx, game, s.meta.currentSkin, s.settings.reducedMotion)
+      renderIso(ctx, game)
       raf = requestAnimationFrame(frame)
     }
     raf = requestAnimationFrame(frame)
-
-    // lightweight HUD refresh (numbers) ~12fps
     const hudTimer = window.setInterval(() => setHud(game.getHud()), 90)
-
-    // pause when app backgrounded
     const onVis = () => {
       if (document.hidden) game.pause()
     }
@@ -117,32 +105,25 @@ export default function PlayScreen() {
 
   const game = gameRef.current
 
-  const finalize = (doubled: boolean, died: boolean) => {
+  const finalize = (doubled: boolean) => {
     const g = gameRef.current
     if (!g || recordedRef.current) {
       go('menu')
       return
     }
     recordedRef.current = true
-    const s = store.getState()
-    const earned = Math.max(0, Math.floor(g.coins) - s.startCoinsForRun())
     const run = {
       mode: pendingRun?.mode ?? ('normal' as const),
       wave: g.wave,
       score: Math.floor(g.score),
-      durationMs: g.getElapsedMs(),
+      durationMs: 0,
       date: new Date().toISOString(),
     }
-    recordRun(run, earned, doubled, died)
-    // Best-effort cloud submission for the online leaderboard (no-op offline).
-    const upgrades = g.getHud().upgradeLevels as unknown as Record<string, number>
-    void submitRun(run, upgrades, pendingRun?.seed)
-    playSfx('win')
+    recordRun(run, Math.floor(g.coinsEarned), 0, doubled)
+    void submitRun(run, {}, pendingRun?.seed)
+    playSfx('ui_tap')
     go('menu')
   }
-
-  const hpFrac = hud ? hud.hp / hud.maxHp : 1
-  const comboBig = hud && hud.comboMul > 1.25
 
   return (
     <div className="screen" ref={wrapRef} style={{ padding: 0 }}>
@@ -150,56 +131,95 @@ export default function PlayScreen() {
 
       {hud && (
         <>
+          {/* top HUD */}
           <div className="hud-top">
-            <div className="col gap" style={{ gap: 6, width: '46%' }}>
-              <div className="wave-pill">WAVE {hud.wave}</div>
-              <div className={'hpbar' + (hpFrac < 0.25 ? ' low' : '')}>
-                <span style={{ width: `${Math.max(0, hpFrac * 100)}%` }} />
-              </div>
+            <div className="wave-pill">
+              WAVE {hud.wave}
+              <span style={{ opacity: 0.6, fontSize: 12 }}> /∞</span>
             </div>
-            <div className="row gap" style={{ alignItems: 'flex-start' }}>
-              <span className="chip coin">🪙 {hud.coins.toLocaleString()}</span>
-              <button
-                className="icon-btn"
-                aria-label="Pause"
-                onClick={() => gameRef.current?.pause()}
-              >
+            <div className="row gap">
+              <span className="chip" style={{ color: '#ff8a7a' }}>❤ {hud.lives}</span>
+              <span className="chip coin">🪙 {hud.gold}</span>
+              <button className="icon-btn" aria-label="Pause" onClick={() => game?.pause()}>
                 ⏸
               </button>
             </div>
           </div>
 
-          {/* boss hp bar */}
-          {hud.bossLabel && hud.phase === 'playing' && hud.bossHpFrac > 0 && (
-            <div style={{ position: 'absolute', top: 92, left: 24, right: 24, zIndex: 5 }}>
-              <div className="center tag" style={{ color: 'var(--bad)' }}>
-                {hud.bossLabel}
-              </div>
+          {hud.bossLabel && (hud.phase === 'wave') && hud.bossHpFrac > 0 && (
+            <div style={{ position: 'absolute', top: 84, left: 24, right: 24, zIndex: 5 }}>
+              <div className="center tag" style={{ color: 'var(--bad)' }}>{hud.bossLabel}</div>
               <div className="hpbar low">
                 <span style={{ width: `${hud.bossHpFrac * 100}%` }} />
               </div>
             </div>
           )}
 
-          {comboBig && <div className="combo-banner">COMBO ×{hud.comboMul.toFixed(2)}</div>}
+          {/* power button */}
+          <button
+            className="power-btn"
+            aria-label="Meteor power"
+            disabled={!hud.powerReady}
+            onClick={() => { /* swipe to aim on the field; tap shows hint */ }}
+          >
+            <span>☄️</span>
+            {!hud.powerReady && <span className="cd">{Math.ceil(hud.powerCd)}</span>}
+          </button>
+
+          {/* bottom controls: tower panel or build cards, plus START WAVE */}
+          {(hud.phase === 'build' || hud.phase === 'wave') && (
+            <div className="build-bar">
+              {hud.selectedTowerInfo ? (
+                <div className="tower-panel">
+                  <div className="col" style={{ flex: 1 }}>
+                    <strong>{TOWERS[hud.selectedTowerInfo.type].name}</strong>
+                    <span className="muted">Tier {hud.selectedTowerInfo.tier + 1}</span>
+                  </div>
+                  <button
+                    className="btn"
+                    disabled={hud.selectedTowerInfo.maxTier || hud.gold < hud.selectedTowerInfo.upgradeCost}
+                    onClick={() => game?.upgradeSelected()}
+                  >
+                    {hud.selectedTowerInfo.maxTier ? 'MAX' : `⬆ 🪙${hud.selectedTowerInfo.upgradeCost}`}
+                  </button>
+                  <button className="btn secondary" onClick={() => game?.sellSelected()}>
+                    💰 {hud.selectedTowerInfo.sellValue}
+                  </button>
+                </div>
+              ) : (
+                <div className="build-cards">
+                  {TOWER_IDS.map((id: TowerId) => {
+                    const def = TOWERS[id]
+                    const cost = hud.buildCosts[id]
+                    const sel = hud.selectedBuild === id
+                    const afford = hud.gold >= cost
+                    return (
+                      <button
+                        key={id}
+                        className={'build-card' + (sel ? ' sel' : '') + (afford ? '' : ' poor')}
+                        onClick={() => game?.setBuild(sel ? null : id)}
+                      >
+                        <span className="bi">{def.icon}</span>
+                        <span className="bc">🪙{cost}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+              {hud.phase === 'build' && (
+                <button className="btn start-wave" onClick={() => game?.startWave()}>
+                  ▶ START WAVE {hud.wave}
+                </button>
+              )}
+            </div>
+          )}
+
+          {hud.phase === 'paused' && game && <PauseModal game={game} onQuit={() => finalize(false)} />}
+          {hud.phase === 'cleared' && game && <VictoryModal game={game} hud={hud} />}
+          {hud.phase === 'gameover' && <GameOverModal hud={hud} onClaim={(d) => finalize(d)} />}
 
           <div className="fps">{hud.fps} fps</div>
-
-          {game && hud.phase === 'bossintro' && <BossIntroModal game={game} hud={hud} />}
-          {game && hud.phase === 'shop' && (
-            <ShopModal game={game} hud={hud} onReroll={() => game.reroll()} />
-          )}
-          {game && hud.phase === 'paused' && (
-            <PauseModal game={game} onQuit={() => finalize(false, false)} />
-          )}
-          {game && hud.phase === 'gameover' && (
-            <ResultsModal
-              hud={hud}
-              reviveHealPct={store.getState().reviveHealPct()}
-              onRevive={() => game.revive()}
-              onClaim={(doubled) => finalize(doubled, true)}
-            />
-          )}
+          {settings.reducedMotion && null}
         </>
       )}
     </div>

@@ -1,19 +1,16 @@
-// Local persistence (AI_PROMPT.md §4.4). meta_state is cached locally and
-// is the source of truth offline; an optional cloud sync layer
-// (lib/cloud.ts) pushes runs to Supabase when configured.
+// Local persistence (AI_PROMPT.md §4.4). meta_state is cached locally and is
+// the source of truth offline; lib/cloud.ts optionally syncs to Supabase.
 
-import type { MetaUpgradeId } from '../data/types'
+import type { TowerId } from '../data/towers'
 
-const VERSION = 1
+const VERSION = 2
 const KEY = `tsd:v${VERSION}`
 
 export interface MetaState {
-  coins: number
-  gems: number
-  towerLevel: number
-  ownedSkins: string[]
-  currentSkin: string
-  metaUpgrades: Partial<Record<MetaUpgradeId, number>>
+  coins: number // spent on permanent tower upgrades
+  gems: number // premium, spent on relics
+  towerLevels: Partial<Record<TowerId, number>>
+  relics: string[]
   bestWave: number
   bestScore: number
   totalRuns: number
@@ -25,8 +22,8 @@ export interface MetaState {
 export interface Settings {
   sound: boolean
   haptics: boolean
-  autoFire: boolean
   reducedMotion: boolean
+  autoStart: boolean // auto-start the next wave after the build phase
 }
 
 export interface LocalRun {
@@ -46,10 +43,8 @@ export interface SaveData {
 export const defaultMeta: MetaState = {
   coins: 0,
   gems: 0,
-  towerLevel: 1,
-  ownedSkins: ['stone'],
-  currentSkin: 'stone',
-  metaUpgrades: {},
+  towerLevels: {},
+  relics: [],
   bestWave: 0,
   bestScore: 0,
   totalRuns: 0,
@@ -61,8 +56,8 @@ export const defaultMeta: MetaState = {
 export const defaultSettings: Settings = {
   sound: true,
   haptics: true,
-  autoFire: false,
   reducedMotion: false,
+  autoStart: false,
 }
 
 export function loadSave(): SaveData {
@@ -84,6 +79,6 @@ export function persist(data: SaveData) {
   try {
     localStorage.setItem(KEY, JSON.stringify(data))
   } catch {
-    /* storage full / unavailable — ignore */
+    /* storage full / unavailable */
   }
 }
