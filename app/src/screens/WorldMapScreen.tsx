@@ -1,5 +1,6 @@
 import { useMemo, type CSSProperties } from 'react'
 import { useGameStore } from '../store/gameStore'
+import { assetUrl, UI } from '../lib/assets'
 
 /**
  * WorldMapScreen — chapter select.
@@ -268,8 +269,10 @@ const S: Record<string, CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     overflow: 'hidden',
-    background:
-      'radial-gradient(120% 85% at 50% 14%, #321C6E 0%, #1A0F3D 46%, #0B0518 100%)',
+    backgroundImage: `linear-gradient(180deg, rgba(11,5,24,0.5) 0%, rgba(11,5,24,0.18) 32%, rgba(11,5,24,0.6) 100%), url(${assetUrl(UI.worldMap)})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    backgroundColor: '#0b0518',
     color: '#F2ECFF',
     fontFamily: "'Inter', system-ui, sans-serif",
   },

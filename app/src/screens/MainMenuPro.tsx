@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../store/gameStore'
+import { assetUrl, UI } from '../lib/assets'
 
 /**
  * MainMenuPro — restyled premium main menu.
@@ -333,7 +334,10 @@ export default function MainMenuPro(): JSX.Element {
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: 'radial-gradient(120% 85% at 50% 18%, #321C6E 0%, #1A0F3D 45%, #0B0518 100%)',
+        backgroundImage: `linear-gradient(180deg, rgba(11,5,24,0.25) 0%, rgba(11,5,24,0.05) 30%, rgba(11,5,24,0.55) 72%, rgba(11,5,24,0.92) 100%), url(${assetUrl(UI.mainMenu)})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center top',
+        backgroundColor: '#0b0518',
         color: C.text,
         overflow: 'hidden',
         fontFamily: "'Inter', system-ui, sans-serif",
@@ -487,7 +491,7 @@ export default function MainMenuPro(): JSX.Element {
 
       {/* ===================== CASTLE STAGE ===================== */}
       <div style={{ position: 'relative', flex: 1, minHeight: 0, zIndex: 1 }}>
-        <CastleScene reducedMotion={reducedMotion} />
+        {/* castle comes from the background art (main_menu_bg.jpg) */}
         {/* side buttons: Events / Pass / Inbox */}
         <div
           style={{
@@ -527,35 +531,22 @@ export default function MainMenuPro(): JSX.Element {
           ))}
         </div>
 
-        {/* game title */}
-        <div
+        {/* game logo (real art) */}
+        <img
+          src={assetUrl(UI.logo)}
+          alt="Tower Swipe Defense"
           style={{
             position: 'absolute',
-            top: 6,
-            left: 12,
+            top: 4,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '62%',
+            maxWidth: 260,
             zIndex: 2,
-            fontFamily: "'Cinzel', Georgia, serif",
-            fontWeight: 800,
-            lineHeight: 1.05,
-            letterSpacing: '0.02em',
-            textShadow: '0 3px 0 rgba(7,3,18,0.5)',
+            filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.6))',
+            pointerEvents: 'none',
           }}
-        >
-          <div style={{ fontSize: 22, color: '#FFFFFF' }}>TOWER</div>
-          <div
-            style={{
-              fontSize: 26,
-              background: 'linear-gradient(180deg,#FFF3C4 0%,#FFD27A 40%,#FF9E2C 70%,#FF7B00 100%)',
-              WebkitBackgroundClip: 'text',
-              backgroundClip: 'text',
-              color: 'transparent',
-              filter: 'drop-shadow(0 0 12px rgba(255,140,60,0.55))',
-            }}
-          >
-            SWIPE
-          </div>
-          <div style={{ fontSize: 22, color: '#FFFFFF' }}>DEFENSE</div>
-        </div>
+        />
       </div>
 
       {/* ===================== CTA STACK ===================== */}

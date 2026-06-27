@@ -5,6 +5,7 @@ import drawBackground from './background'
 import { drawTowerSprite } from './spritesTowers'
 import { drawEnemySprite } from './spritesEnemies'
 import { drawBeam } from './fx'
+import { ENEMY_SPRITE, getImg, MAP_BG, ready, TOWER_SPRITE } from '../lib/assets'
 import type { IsoGame, PathEnemy, PlacedTower } from './isoGame'
 
 const THEME_KEY: Record<string, string> = {
@@ -26,8 +27,16 @@ const BEAM_COLOR: Record<string, string> = {
 export function renderIso(ctx: CanvasRenderingContext2D, game: IsoGame) {
   const { w, h, view, map } = game
 
-  // vibrant parallax backdrop (sky, skyline, fog, ambient, vignette)
-  drawBackground(ctx, w, h, THEME_KEY[map.name] ?? 'meadow', game.time)
+  // Real illustrated battlefield backdrop (darkened so the board reads),
+  // falling back to the procedural parallax until the image decodes.
+  const bgImg = getImg(MAP_BG[map.name] ?? MAP_BG.Meadow)
+  if (ready(bgImg)) {
+    drawCover(ctx, bgImg, w, h)
+    ctx.fillStyle = 'rgba(8,6,24,0.5)'
+    ctx.fillRect(0, 0, w, h)
+  } else {
+    drawBackground(ctx, w, h, THEME_KEY[map.name] ?? 'meadow', game.time)
+  }
 
   const shake = game.shakeOffset
   ctx.save()
@@ -77,16 +86,34 @@ export function renderIso(ctx: CanvasRenderingContext2D, game: IsoGame) {
   const items: { depth: number; fn: () => void }[] = []
   for (const t of game.towers) {
     const p = gridToScreen(t.c, t.r, view)
+    const img = getImg(TOWER_SPRITE[t.type])
     items.push({
       depth: t.c + t.r,
-      fn: () =>
-        drawTowerSprite(ctx, t.type, p.x, p.y, 30 * s, {
-          tier: t.tier,
-          flash: t.flash,
-          angle: t.angle,
-          selected: game.selectedTowerId === t.id,
-          time: game.time,
-        }),
+      fn: () => {
+        const selected = game.selectedTowerId === t.id
+        if (ready(img)) {
+          const wdt = 82 * s * (1 + t.tier * 0.08)
+          drawShadow(ctx, p.x, p.y, wdt * 0.32)
+          const bob = Math.sin(t.bob * 1.6) * 1.2 * s
+          drawSpriteImg(ctx, img, p.x, p.y + bob, wdt, false, 0.74)
+          drawTierPips(ctx, p.x, p.y, s, t.tier)
+          if (selected) {
+            ctx.strokeStyle = '#ffd27a'
+            ctx.lineWidth = 2
+            ctx.beginPath()
+            ctx.ellipse(p.x, p.y + 4 * s, 26 * s, 13 * s, 0, 0, Math.PI * 2)
+            ctx.stroke()
+          }
+        } else {
+          drawTowerSprite(ctx, t.type, p.x, p.y, 30 * s, {
+            tier: t.tier,
+            flash: t.flash,
+            angle: t.angle,
+            selected,
+            time: game.time,
+          })
+        }
+      },
     })
   }
   for (const e of game.enemies) {
@@ -94,20 +121,43 @@ export function renderIso(ctx: CanvasRenderingContext2D, game: IsoGame) {
     const seg = Math.min(map.path.length - 2, Math.floor(e.prog))
     const a = gridToScreen(map.path[seg].c, map.path[seg].r, view)
     const b = gridToScreen(map.path[seg + 1].c, map.path[seg + 1].r, view)
+    const faceLeft = b.x - a.x < 0
+    const img = getImg(ENEMY_SPRITE[e.type])
     items.push({
       depth: e.c + e.r + 0.5,
-      fn: () =>
-        drawEnemySprite(ctx, e.type, p.x, p.y, e.def.radius * s * 0.12, {
-          hpFrac: Math.max(0, e.hp / e.maxHp),
-          faceLeft: b.x - a.x < 0,
-          wobble: e.wobble,
-          frozen: e.freezeT > 0,
-          poisoned: e.poisonT > 0,
-          enraged: e.enraged,
-          shield: e.shieldAura > 0,
-          boss: !!e.def.boss,
-          time: game.time,
-        }),
+      fn: () => {
+        const hpFrac = Math.max(0, e.hp / e.maxHp)
+        if (ready(img)) {
+          const wdt = e.def.radius * s * (e.def.boss ? 4.8 : 3.7)
+          const bob = e.freezeT > 0 ? 0 : Math.abs(Math.sin(e.wobble * 1.3)) * 2 * s
+          drawShadow(ctx, p.x, p.y, wdt * 0.34)
+          ctx.save()
+          if (e.freezeT > 0) ctx.filter = 'brightness(1.1) saturate(0.4)'
+          else if (e.poisonT > 0) ctx.filter = 'hue-rotate(40deg) saturate(1.3)'
+          drawSpriteImg(ctx, img, p.x, p.y - bob, wdt, faceLeft, 0.62)
+          ctx.restore()
+          if (e.shieldAura > 0) {
+            ctx.strokeStyle = 'rgba(155,123,255,0.8)'
+            ctx.lineWidth = 2
+            ctx.beginPath()
+            ctx.arc(p.x, p.y - wdt * 0.32, wdt * 0.5, 0, Math.PI * 2)
+            ctx.stroke()
+          }
+          if (hpFrac < 1) drawEnemyHp(ctx, p.x, p.y - wdt * 0.78, wdt * 0.7, hpFrac, !!e.def.boss, !!e.def.elite)
+        } else {
+          drawEnemySprite(ctx, e.type, p.x, p.y, e.def.radius * s * 0.12, {
+            hpFrac,
+            faceLeft,
+            wobble: e.wobble,
+            frozen: e.freezeT > 0,
+            poisoned: e.poisonT > 0,
+            enraged: e.enraged,
+            shield: e.shieldAura > 0,
+            boss: !!e.def.boss,
+            time: game.time,
+          })
+        }
+      },
     })
   }
   items.sort((a, b) => a.depth - b.depth)
@@ -149,6 +199,65 @@ export function renderIso(ctx: CanvasRenderingContext2D, game: IsoGame) {
     ctx.lineWidth = 12
     ctx.strokeRect(6, 6, w - 12, h - 12)
   }
+}
+
+// ---------- raster sprite helpers ----------
+function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number) {
+  const ir = img.naturalWidth / img.naturalHeight
+  const cr = w / h
+  let dw = w
+  let dh = h
+  if (ir > cr) {
+    dh = h
+    dw = h * ir
+  } else {
+    dw = w
+    dh = w / ir
+  }
+  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh)
+}
+
+function drawSpriteImg(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  cx: number,
+  cy: number,
+  width: number,
+  faceLeft: boolean,
+  anchorY: number,
+) {
+  const hgt = width * (img.naturalHeight / img.naturalWidth)
+  ctx.save()
+  ctx.translate(cx, cy)
+  if (faceLeft) ctx.scale(-1, 1)
+  ctx.drawImage(img, -width / 2, -hgt * anchorY, width, hgt)
+  ctx.restore()
+}
+
+function drawShadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number) {
+  ctx.fillStyle = 'rgba(0,0,0,0.32)'
+  ctx.beginPath()
+  ctx.ellipse(x, y + 3, rx, rx * 0.42, 0, 0, Math.PI * 2)
+  ctx.fill()
+}
+
+function drawTierPips(ctx: CanvasRenderingContext2D, x: number, y: number, s: number, tier: number) {
+  for (let i = 0; i < tier; i++) {
+    ctx.fillStyle = '#ffd27a'
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.arc(x - (tier - 1) * 4 * s + i * 8 * s, y + 9 * s, 2.4 * s, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.stroke()
+  }
+}
+
+function drawEnemyHp(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, frac: number, boss: boolean, elite: boolean) {
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'
+  ctx.fillRect(x - w / 2, y, w, 4)
+  ctx.fillStyle = boss ? '#ff5a3c' : elite ? '#ffb347' : '#7bd16a'
+  ctx.fillRect(x - w / 2, y, w * frac, 4)
 }
 
 // ---------- board helpers ----------
