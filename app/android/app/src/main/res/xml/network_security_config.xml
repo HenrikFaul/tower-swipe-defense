@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tower Swipe Defense is offline-first. All real network traffic (optional
+  Supabase cloud sync) is HTTPS, so cleartext is denied app-wide. This closes
+  the "cleartext http endpoint" audit finding at the platform level: even if a
+  dependency attempts an http:// call, the OS blocks it.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

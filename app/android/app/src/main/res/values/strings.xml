@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Tower Swipe Defense</string>
+    <string name="title_activity_main">Tower Swipe Defense</string>
+    <string name="package_name">com.towerswipe.defense</string>
+    <string name="custom_url_scheme">com.towerswipe.defense</string>
+</resources>

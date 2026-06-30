@@ -1,0 +1,123 @@
+name: Build Android APK
+
+# Produces the runnable Tower Swipe Defense APK. The agent sandbox cannot
+# reach Google's Maven/SDK servers, so the binary is built here in CI where
+# that access is available. The APK is published as a workflow artifact and,
+# on a version tag (v*) or a Release, attached to the GitHub Release so it has
+# a permanent, directly downloadable URL.
+
+on:
+  push:
+    branches: ['**', '!apk-dist']
+    tags: ['v*']
+  workflow_dispatch: {}
+  release:
+    types: [created]
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web bundle
+        run: npm run build
+
+      - name: Sync Capacitor → Android
+        run: npx cap sync android
+
+      - name: Build release APK
+        working-directory: app/android
+        run: |
+          chmod +x ./gradlew
+          # Signed, non-debuggable release build (closes the High "debuggable"
+          # audit finding). Signed with the checked-in stable release keystore.
+          ./gradlew assembleRelease --no-daemon --stacktrace \
+            -PversionCode=${{ github.run_number }} \
+            -PversionName="1.0.${{ github.run_number }}"
+
+      - name: Stage APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk tower-swipe-defense.apk
+
+      # Fail the build unless the APK is a valid, signed, launchable package —
+      # so a green run guarantees an installable binary.
+      - name: Verify APK (badging + signature)
+        run: |
+          set -e
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "Using build-tools: $BT"
+          echo "===== aapt badging ====="
+          "$BT/aapt" dump badging tower-swipe-defense.apk | grep -E "package:|launchable-activity:|sdkVersion:|targetSdkVersion:"
+          echo "===== apksigner verify ====="
+          "$BT/apksigner" verify --print-certs --verbose tower-swipe-defense.apk
+          echo "===== size ====="
+          ls -lh tower-swipe-defense.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tower-swipe-defense-apk
+          path: app/tower-swipe-defense.apk
+          if-no-files-found: error
+
+      # Mirror the APK onto a dedicated `apk-dist` branch so it has a stable,
+      # fetchable location (objects.githubusercontent.com / git fetch) even
+      # where the Actions-artifact storage host is not reachable.
+      - name: Publish APK to apk-dist branch
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -e
+          cp app/tower-swipe-defense.apk /tmp/tsd.apk
+          SHORT=$(git rev-parse --short HEAD)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan apk-dist
+          git rm -rf . >/dev/null 2>&1 || true
+          cp /tmp/tsd.apk tower-swipe-defense.apk
+          printf '# Tower Swipe Defense — APK distribution branch\n\nAuto-published build of `%s`.\nDownload: tower-swipe-defense.apk\n' "$SHORT" > README.md
+          git add tower-swipe-defense.apk README.md
+          git commit -m "APK build from $SHORT"
+          git push --force origin apk-dist
+
+      # On a v* tag push this CREATES the release; on a Release event it
+      # attaches to the existing release. Either way the APK lands on a
+      # permanent objects.githubusercontent.com download URL.
+      - name: Publish APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Tower Swipe Defense ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          files: app/tower-swipe-defense.apk
+          body: |
+            **Tower Swipe Defense** — installable Android APK.
+
+            Download `tower-swipe-defense.apk` below and install on any Android
+            device (enable "Install unknown apps" for your browser/file manager).
+            Verified in CI with `apksigner verify` and `aapt dump badging`.
