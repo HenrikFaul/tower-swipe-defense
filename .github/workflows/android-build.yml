@@ -51,16 +51,18 @@ jobs:
       - name: Sync Capacitor → Android
         run: npx cap sync android
 
-      - name: Build debug APK
+      - name: Build release APK
         working-directory: app/android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace \
+          # Signed, non-debuggable release build (closes the High "debuggable"
+          # audit finding). Signed with the checked-in stable release keystore.
+          ./gradlew assembleRelease --no-daemon --stacktrace \
             -PversionCode=${{ github.run_number }} \
             -PversionName="1.0.${{ github.run_number }}"
 
       - name: Stage APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk tower-swipe-defense.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk tower-swipe-defense.apk
 
       # Fail the build unless the APK is a valid, signed, launchable package —
       # so a green run guarantees an installable binary.

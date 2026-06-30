@@ -66,9 +66,18 @@ export default function SettingsScreen() {
           <strong className="display">Account</strong>
           <span className="muted">Total runs: {meta.totalRuns}</span>
           <span className="muted">Player ID: local-{(meta.totalRuns * 7 + 1000).toString(36)}</span>
+          <a
+            className="muted"
+            href="https://github.com/HenrikFaul/tower-swipe-defense/blob/main/PRIVACY.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 12, color: 'var(--accent, #5cc8ff)', textDecoration: 'underline' }}
+          >
+            Privacy Policy
+          </a>
           <p className="muted" style={{ fontSize: 11 }}>
-            Tower Swipe Defense v1.0.0 · No personal data leaves your device unless cloud sync is
-            enabled. GDPR delete = clear app data.
+            Tower Swipe Defense · No personal data is collected; progress is stored on your device.
+            No ads or analytics. GDPR/CCPA erase = clear app data.
           </p>
         </div>
       </div>

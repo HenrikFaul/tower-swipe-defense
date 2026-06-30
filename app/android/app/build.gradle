@@ -18,8 +18,23 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            // Stable, checked-in release key so sideloaded updates install over
+            // each other. This is a sideload/demo key (not a Play upload key); the
+            // password is intentionally public and protects nothing sensitive.
+            storeFile file('towerswipe-release.jks')
+            storePassword 'towerswipe'
+            keyAlias 'towerswipe'
+            keyPassword 'towerswipe'
+        }
+    }
     buildTypes {
         release {
+            // Ship a non-debuggable, signed release build (debug builds set
+            // android:debuggable=true, which the security audit flags as High).
+            debuggable false
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
