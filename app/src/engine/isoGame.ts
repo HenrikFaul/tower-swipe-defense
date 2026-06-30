@@ -1,29 +1,29 @@
 import { ENEMIES, enemyTypesForWave, type EnemyDef, type EnemyType } from '../data/enemies'
 import { rollDamage, TOWERS, type TowerDef, type TowerId } from '../data/towers'
-import { isBuildable, keepOf, pickMap, type GameMap } from '../data/maps'
+import { MAP_IMG_H, MAP_IMG_W, pickMap, type GameMap } from '../data/maps'
 import { POWERS, type PowerId } from '../data/powers'
 import { waveCoinDrop, waveEnemyCount, waveEnemyHp } from '../lib/balance'
 import { mulberry32 } from '../lib/rng'
 import { playSfx } from '../lib/audio'
 import { haptics } from '../lib/haptics'
-import { gridToScreen, screenToGrid, type IsoView } from './iso'
 
 export type Phase = 'build' | 'wave' | 'cleared' | 'gameover' | 'paused'
 export type TargetMode = 'first' | 'last' | 'strong' | 'close'
 export const TARGET_MODES: TargetMode[] = ['first', 'last', 'strong', 'close']
-export const TARGET_LABEL: Record<TargetMode, string> = {
-  first: 'First',
-  last: 'Last',
-  strong: 'Strong',
-  close: 'Close',
+export const TARGET_LABEL: Record<TargetMode, string> = { first: 'First', last: 'Last', strong: 'Strong', close: 'Close' }
+
+interface Vec {
+  x: number
+  y: number
 }
 
 export interface PlacedTower {
   id: number
   type: TowerId
   def: TowerDef
-  c: number
-  r: number
+  plot: number
+  sx: number
+  sy: number
   tier: number
   metaBonus: number
   fireRateMul: number
@@ -32,7 +32,6 @@ export interface PlacedTower {
   flash: number
   bob: number
   targetMode: TargetMode
-  totalKills: number
 }
 
 export interface PathEnemy {
@@ -41,10 +40,11 @@ export interface PathEnemy {
   def: EnemyDef
   hp: number
   maxHp: number
-  prog: number
-  c: number
-  r: number
-  baseSpeed: number
+  dist: number
+  sx: number
+  sy: number
+  faceLeft: boolean
+  speedPx: number
   slowT: number
   freezeT: number
   poisonDps: number
@@ -65,8 +65,8 @@ interface Proj {
   px: number
   py: number
   target: PathEnemy | null
-  tc: number
-  tr: number
+  tx: number
+  ty: number
   speed: number
   dmg: number
   crit: boolean
@@ -143,12 +143,18 @@ export interface Hud {
 let enemySeq = 1
 let towerSeq = 1
 
-const METEOR_RADIUS = 1.7
+// pixel-space tuning (canvas units = CSS px)
+const SPEED_PX = 46 // enemy px/sec per speed unit
+const RANGE_PX = 44 // px per range "tile"
+const AURA_PX = 95 // shield/heal aura radius
+const METEOR_R = 92
+const PLOT_TAP_R = 36
+const METEOR_DMG_K = 2.6
 
 export class IsoGame {
   phase: Phase = 'build'
   map: GameMap
-  view: IsoView = { ox: 0, oy: 0, scale: 1 }
+  view = { ox: 0, oy: 0, scale: 1 }
   w = 0
   h = 0
   speed = 1
@@ -157,6 +163,13 @@ export class IsoGame {
   enemies: PathEnemy[] = []
   projectiles: Proj[] = []
   particles: Particle[] = []
+
+  // geometry (screen px), recomputed on resize
+  pathPx: Vec[] = []
+  plotsPx: Vec[] = []
+  private segLen: number[] = []
+  private pathLen = 0
+  private occupied = new Set<number>()
 
   wave = 0
   lives: number
@@ -172,15 +185,13 @@ export class IsoGame {
   private spawnTimer = 0
   private spawnInterval = 0.9
 
-  // powers
   private meteorCd = 0
   private freezeCd = 0
   private goldRushCd = 0
   private goldRushT = 0
-  aim: { x: number; y: number } | null = null
+  aim: Vec | null = null
   private aimActive = false
-  private downPt: { x: number; y: number } | null = null
-  private downCell: { c: number; r: number } | null = null
+  private downPt: Vec | null = null
   private dragMoved = false
 
   private mods: RunModifiers
@@ -208,12 +219,62 @@ export class IsoGame {
   resize(w: number, h: number) {
     this.w = w
     this.h = h
-    const { cols, rows } = this.map
-    const totalW = (cols + rows) * 32
-    const scale = Math.min(1.15, (w * 0.96) / totalW)
-    const gridH = (cols - 1 + rows - 1) * 16 * scale
-    const cy = (118 + (h - 150)) / 2
-    this.view = { ox: w / 2, oy: cy - gridH / 2, scale }
+    const scale = Math.max(w / MAP_IMG_W, h / MAP_IMG_H)
+    this.view = { ox: (w - MAP_IMG_W * scale) / 2, oy: (h - MAP_IMG_H * scale) / 2, scale }
+    this.recomputeGeometry()
+  }
+
+  private norm(nx: number, ny: number): Vec {
+    return { x: this.view.ox + nx * MAP_IMG_W * this.view.scale, y: this.view.oy + ny * MAP_IMG_H * this.view.scale }
+  }
+
+  private recomputeGeometry() {
+    this.pathPx = this.map.path.map((p) => this.norm(p.x, p.y))
+    this.plotsPx = this.map.plots.map((p) => this.norm(p.x, p.y))
+    this.segLen = []
+    this.pathLen = 0
+    for (let i = 0; i < this.pathPx.length - 1; i++) {
+      const a = this.pathPx[i]
+      const b = this.pathPx[i + 1]
+      const len = Math.hypot(b.x - a.x, b.y - a.y)
+      this.segLen.push(len)
+      this.pathLen += len
+    }
+    // reposition existing towers/enemies onto the new screen geometry
+    for (const t of this.towers) {
+      const p = this.plotsPx[t.plot]
+      if (p) {
+        t.sx = p.x
+        t.sy = p.y
+      }
+    }
+    for (const e of this.enemies) this.placeEnemy(e)
+  }
+
+  private posAtDist(d: number): { x: number; y: number; seg: number } {
+    if (this.pathPx.length === 0) return { x: 0, y: 0, seg: 0 }
+    if (d <= 0) return { x: this.pathPx[0].x, y: this.pathPx[0].y, seg: 0 }
+    let acc = 0
+    for (let i = 0; i < this.segLen.length; i++) {
+      if (acc + this.segLen[i] >= d) {
+        const f = this.segLen[i] > 0 ? (d - acc) / this.segLen[i] : 0
+        const a = this.pathPx[i]
+        const b = this.pathPx[i + 1]
+        return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, seg: i }
+      }
+      acc += this.segLen[i]
+    }
+    const last = this.pathPx[this.pathPx.length - 1]
+    return { x: last.x, y: last.y, seg: this.segLen.length - 1 }
+  }
+
+  private placeEnemy(e: PathEnemy) {
+    const p = this.posAtDist(e.dist)
+    e.sx = p.x
+    e.sy = p.y
+    const a = this.pathPx[p.seg]
+    const b = this.pathPx[Math.min(this.pathPx.length - 1, p.seg + 1)]
+    e.faceLeft = b.x - a.x < 0
   }
 
   start() {
@@ -223,6 +284,16 @@ export class IsoGame {
   setSpeed(s: number) {
     this.speed = s
     this.onChange()
+  }
+
+  keepPos(): Vec {
+    return this.pathPx[this.pathPx.length - 1] ?? { x: this.w / 2, y: this.h / 2 }
+  }
+  spawnPos(): Vec {
+    return this.pathPx[0] ?? { x: this.w / 2, y: 0 }
+  }
+  isPlotOccupied(i: number): boolean {
+    return this.occupied.has(i)
   }
 
   // ---- HUD ---------------------------------------------------------------
@@ -269,10 +340,7 @@ export class IsoGame {
         this.phase === 'cleared'
           ? { wave: this.clearedWaveNo, stars: this.starsFor(), coins: this.lastReward.coins, gems: this.lastReward.gems, interest: this.lastReward.interest }
           : null,
-      result:
-        this.phase === 'gameover'
-          ? { wave: this.wave, score: Math.floor(this.score), coins: Math.floor(this.coinsEarned) }
-          : null,
+      result: this.phase === 'gameover' ? { wave: this.wave, score: Math.floor(this.score), coins: Math.floor(this.coinsEarned) } : null,
       fps: Math.round(this.fps),
     }
   }
@@ -289,7 +357,6 @@ export class IsoGame {
     const isBoss = wave % 10 === 0
     const n = waveEnemyCount(wave)
     const pool = enemyTypesForWave(wave)
-    // deterministic-ish preview using a temp rng seeded by wave
     const r = mulberry32(wave * 2654435761)
     for (let i = 0; i < n; i++) {
       const t = pool[Math.floor(r() * pool.length)]
@@ -321,7 +388,6 @@ export class IsoGame {
   private buildSpawnQueue(wave: number) {
     const isBoss = wave % 10 === 0
     const q: EnemyType[] = []
-    // Lighter escort on boss waves so the boss is the focus, not a swarm.
     const count = isBoss ? Math.ceil(waveEnemyCount(wave) / 2) : waveEnemyCount(wave)
     for (let i = 0; i < count; i++) q.push(this.pickType(wave))
     if (isBoss) q.push(wave % 30 === 0 ? 'dragon' : 'ogre')
@@ -334,27 +400,20 @@ export class IsoGame {
     return pool[Math.floor(this.rng() * pool.length)]
   }
 
-  private spawnEnemy(type: EnemyType, prog = 0, hpScale = 1, noSplit = false) {
+  private spawnEnemy(type: EnemyType, dist = 0, hpScale = 1, noSplit = false) {
     const def = ENEMIES[type]
     const baseHp = waveEnemyHp(this.wave) * def.hpMul * (def.boss ? 1.4 : 1) * hpScale
-    // Position from the path so split children appear where they died, not at
-    // the portal (avoids a one-frame teleport / wrong aura that same step).
-    const path = this.map.path
-    const pc = Math.max(0, Math.min(path.length - 1, prog))
-    const seg = Math.floor(pc)
-    const f = pc - seg
-    const a = path[seg]
-    const b = path[Math.min(path.length - 1, seg + 1)]
     const e: PathEnemy = {
       id: enemySeq++,
       type,
       def,
       hp: baseHp,
       maxHp: baseHp,
-      prog,
-      c: a.c + (b.c - a.c) * f,
-      r: a.r + (b.r - a.r) * f,
-      baseSpeed: def.speed,
+      dist,
+      sx: 0,
+      sy: 0,
+      faceLeft: false,
+      speedPx: def.speed * SPEED_PX,
       slowT: 0,
       freezeT: 0,
       poisonDps: 0,
@@ -368,6 +427,7 @@ export class IsoGame {
       wobble: this.rng() * Math.PI * 2,
       noSplit,
     }
+    this.placeEnemy(e)
     this.enemies.push(e)
   }
 
@@ -403,8 +463,6 @@ export class IsoGame {
   pointerDown(x: number, y: number) {
     this.downPt = { x, y }
     this.dragMoved = false
-    const g = screenToGrid(x, y, this.view)
-    this.downCell = { c: Math.round(g.c), r: Math.round(g.r) }
     if (!this.selectedBuild && this.meteorCd <= 0 && this.phase === 'wave') {
       this.aimActive = true
       this.aim = { x, y }
@@ -419,8 +477,6 @@ export class IsoGame {
   pointerUp(x: number, y: number) {
     const wasAiming = this.aimActive
     this.aimActive = false
-    const cell = this.downCell
-    this.downCell = null
     this.downPt = null
     if (wasAiming && this.dragMoved && this.meteorCd <= 0) {
       this.castMeteor(x, y)
@@ -428,16 +484,29 @@ export class IsoGame {
       return
     }
     this.aim = null
-    if (this.dragMoved || !cell) return
-    const { c, r } = cell
-    const existing = this.towers.find((t) => t.c === c && t.r === r)
-    if (this.selectedBuild) {
-      if (existing) this.selectTower(existing)
-      else if (isBuildable(this.map, c, r)) this.placeTower(c, r, this.selectedBuild)
+    if (this.dragMoved) return
+
+    // tap → nearest plot
+    let best = -1
+    let bestD = PLOT_TAP_R
+    for (let i = 0; i < this.plotsPx.length; i++) {
+      const d = Math.hypot(this.plotsPx[i].x - x, this.plotsPx[i].y - y)
+      if (d < bestD) {
+        bestD = d
+        best = i
+      }
+    }
+    if (best < 0) {
+      this.selectedTowerId = null
+      this.onChange()
       return
     }
-    if (existing) this.selectTower(existing)
-    else {
+    const existing = this.towers.find((t) => t.plot === best)
+    if (existing) {
+      this.selectTower(existing)
+    } else if (this.selectedBuild) {
+      this.placeTower(best, this.selectedBuild)
+    } else {
       this.selectedTowerId = null
       this.onChange()
     }
@@ -450,7 +519,7 @@ export class IsoGame {
     this.onChange()
   }
 
-  private placeTower(c: number, r: number, type: TowerId) {
+  private placeTower(plot: number, type: TowerId) {
     const def = TOWERS[type]
     const cost = def.tiers[0].upgradeCost
     if (this.gold < cost) {
@@ -458,13 +527,16 @@ export class IsoGame {
       return
     }
     this.gold -= cost
+    this.occupied.add(plot)
     const metaLevel = this.mods.towerMetaLevels[type] ?? 0
+    const p = this.plotsPx[plot]
     this.towers.push({
       id: towerSeq++,
       type,
       def,
-      c,
-      r,
+      plot,
+      sx: p.x,
+      sy: p.y,
       tier: 0,
       metaBonus: metaLevel * 0.08 + this.mods.dmgMul,
       fireRateMul: this.mods.fireRateMul,
@@ -473,10 +545,8 @@ export class IsoGame {
       flash: 0,
       bob: this.rng() * Math.PI * 2,
       targetMode: 'first',
-      totalKills: 0,
     })
-    const s = this.towerScreen(c, r)
-    this.spawnParticle(s.x, s.y - 10, def.accent, 'ring')
+    this.spawnParticle(p.x, p.y - 10, def.accent, 'ring')
     playSfx('ui_tap')
     haptics.light()
     if (this.gold < cost) this.selectedBuild = null
@@ -493,8 +563,7 @@ export class IsoGame {
     }
     this.gold -= cost
     t.tier++
-    const s = this.towerScreen(t.c, t.r)
-    this.spawnParticle(s.x, s.y - 16, t.def.accent, 'ring')
+    this.spawnParticle(t.sx, t.sy - 16, t.def.accent, 'ring')
     playSfx('wave_clear')
     haptics.medium()
     this.onChange()
@@ -518,7 +587,9 @@ export class IsoGame {
   sellSelected() {
     const idx = this.towers.findIndex((x) => x.id === this.selectedTowerId)
     if (idx < 0) return
-    this.gold += this.sellValue(this.towers[idx])
+    const t = this.towers[idx]
+    this.gold += this.sellValue(t)
+    this.occupied.delete(t.plot)
     this.towers.splice(idx, 1)
     this.selectedTowerId = null
     playSfx('enemy_dead')
@@ -529,12 +600,10 @@ export class IsoGame {
   private castMeteor(x: number, y: number) {
     if (this.phase !== 'wave') return
     this.meteorCd = POWERS.meteor.cooldown
-    const g = screenToGrid(x, y, this.view)
-    // Scales with wave so it stays a strong nuke without trivializing/fizzling.
-    const dmg = waveEnemyHp(this.wave) * 2.6 + 80
+    const dmg = waveEnemyHp(this.wave) * METEOR_DMG_K + 80
     let hits = 0
     for (const e of [...this.enemies]) {
-      if (Math.hypot(e.c - g.c, e.r - g.r) <= METEOR_RADIUS) {
+      if (Math.hypot(e.sx - x, e.sy - y) <= METEOR_R) {
         this.damageEnemy(e, dmg, true, true)
         if (e.hp <= 0) this.killEnemy(e, this.enemies.indexOf(e))
         hits++
@@ -553,10 +622,9 @@ export class IsoGame {
   castFreeze() {
     if (this.freezeCd > 0 || this.phase !== 'wave') return
     this.freezeCd = POWERS.freeze.cooldown
-    for (const e of this.enemies) e.freezeT = Math.max(e.freezeT, 3)
     for (const e of this.enemies) {
-      const s = this.enemyScreen(e)
-      this.spawnParticle(s.x, s.y, 0xaee9ff, 'spark')
+      e.freezeT = Math.max(e.freezeT, 3)
+      this.spawnParticle(e.sx, e.sy, 0xaee9ff, 'spark')
     }
     playSfx('crit')
     haptics.medium()
@@ -573,7 +641,6 @@ export class IsoGame {
     this.onChange()
   }
 
-  // ---- pause -------------------------------------------------------------
   pause() {
     if (this.phase === 'wave' || this.phase === 'build') {
       this.prevPhase = this.phase
@@ -588,15 +655,8 @@ export class IsoGame {
     }
   }
 
-  // ---- helpers -----------------------------------------------------------
-  towerScreen(c: number, r: number) {
-    return gridToScreen(c, r, this.view)
-  }
-  private enemyScreen(e: PathEnemy) {
-    return gridToScreen(e.c, e.r, this.view)
-  }
   towerRange(t: PlacedTower): number {
-    return t.def.tiers[t.tier].range * (1 + this.mods.rangeMul)
+    return t.def.tiers[t.tier].range * RANGE_PX * (1 + this.mods.rangeMul)
   }
 
   // ---- simulation --------------------------------------------------------
@@ -646,22 +706,19 @@ export class IsoGame {
   }
 
   private updateEnemies(dt: number) {
-    // warlock shield auras
     for (const e of this.enemies) e.shieldAura = 0
     for (const m of this.enemies) {
       if (!m.def.shield) continue
       for (const ally of this.enemies) {
-        if (Math.hypot(m.c - ally.c, m.r - ally.r) < 2.2) ally.shieldAura = Math.max(ally.shieldAura, m.def.shield)
+        if (Math.hypot(m.sx - ally.sx, m.sy - ally.sy) < AURA_PX) ally.shieldAura = Math.max(ally.shieldAura, m.def.shield)
       }
     }
 
-    const path = this.map.path
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i]
       if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - dt * 6)
       e.wobble += dt * 6
 
-      // damage over time
       if (e.poisonT > 0) {
         e.poisonT -= dt
         this.damageEnemy(e, e.poisonDps * dt, false, false)
@@ -675,20 +732,17 @@ export class IsoGame {
         continue
       }
 
-      // enrage
       if (!e.enraged && e.def.enrageBelow && e.hp / e.maxHp < e.def.enrageBelow) {
         e.enraged = true
-        const s = this.enemyScreen(e)
-        this.spawnText(s.x, s.y - 16, 'ENRAGED!')
+        this.spawnText(e.sx, e.sy - 16, 'ENRAGED!')
       }
 
-      // healer
       if (e.def.healPerSec) {
         let tgt: PathEnemy | null = null
-        let bd = 2.4
+        let bd = AURA_PX
         for (const o of this.enemies) {
           if (o === e || o.hp >= o.maxHp) continue
-          const d = Math.hypot(e.c - o.c, e.r - o.r)
+          const d = Math.hypot(e.sx - o.sx, e.sy - o.sy)
           if (d < bd) {
             bd = d
             tgt = o
@@ -697,33 +751,27 @@ export class IsoGame {
         if (tgt) tgt.hp = Math.min(tgt.maxHp, tgt.hp + tgt.maxHp * e.def.healPerSec * dt)
       }
 
-      // movement
       if (e.freezeT > 0) {
         e.freezeT -= dt
       } else {
-        let sp = e.baseSpeed
+        let sp = e.speedPx
         if (e.enraged) sp *= 1.7
         if (e.slowT > 0) {
           e.slowT -= dt
           sp *= 0.5
         }
-        e.prog += sp * dt
-        if (e.prog >= path.length - 1) {
+        e.dist += sp * dt
+        if (e.dist >= this.pathLen) {
           this.lives -= e.def.leak
           this.flash = 1
           this.shake = Math.max(this.shake, 0.5)
           haptics.medium()
-          const k = this.towerScreen(keepOf(this.map).c, keepOf(this.map).r)
+          const k = this.keepPos()
           this.spawnParticle(k.x, k.y, 0xff5a3c, 'ring')
           this.enemies.splice(i, 1)
           continue
         }
-        const seg = Math.floor(e.prog)
-        const f = e.prog - seg
-        const a = path[seg]
-        const b = path[Math.min(path.length - 1, seg + 1)]
-        e.c = a.c + (b.c - a.c) * f
-        e.r = a.r + (b.r - a.r) * f
+        this.placeEnemy(e)
       }
     }
   }
@@ -735,11 +783,7 @@ export class IsoGame {
       const tier = t.def.tiers[t.tier]
       const range = this.towerRange(t)
       const best = this.pickTarget(t, range)
-      if (best) {
-        const bs = this.enemyScreen(best)
-        const ts = this.towerScreen(t.c, t.r)
-        t.angle = Math.atan2(bs.y - ts.y, bs.x - ts.x)
-      }
+      if (best) t.angle = Math.atan2(best.sy - t.sy, best.sx - t.sx)
       const cd = tier.cd / (1 + t.fireRateMul)
       if (t.cd <= 0 && best) {
         t.cd = cd
@@ -753,22 +797,21 @@ export class IsoGame {
         if (t.def.melee) {
           this.dealMelee(t, best, dmg, crit)
         } else {
-          const ts = this.towerScreen(t.c, t.r)
           this.projectiles.push({
-            x: ts.x,
-            y: ts.y - 18,
-            px: ts.x,
-            py: ts.y - 18,
+            x: t.sx,
+            y: t.sy - 22,
+            px: t.sx,
+            py: t.sy - 22,
             target: best,
-            tc: best.c,
-            tr: best.r,
-            speed: t.def.projectile === 'cannon' ? 360 : 540,
+            tx: best.sx,
+            ty: best.sy,
+            speed: t.def.projectile === 'cannon' ? 360 : 560,
             dmg,
             crit,
             magic: !!t.def.magic,
             kind: t.def.projectile,
             color: t.def.accent,
-            splash: t.def.splash,
+            splash: t.def.splash ? t.def.splash * RANGE_PX : undefined,
             slow: t.def.slow,
             poison: t.def.dot,
             burn: t.def.burn,
@@ -785,12 +828,12 @@ export class IsoGame {
     let best: PathEnemy | null = null
     let score = -Infinity
     for (const e of this.enemies) {
-      const d = Math.hypot(e.c - t.c, e.r - t.r)
+      const d = Math.hypot(e.sx - t.sx, e.sy - t.sy)
       if (d > range) continue
       let s: number
       switch (t.targetMode) {
-        case 'first': s = e.prog; break
-        case 'last': s = -e.prog; break
+        case 'first': s = e.dist; break
+        case 'last': s = -e.dist; break
         case 'strong': s = e.hp; break
         case 'close': s = -d; break
       }
@@ -804,9 +847,8 @@ export class IsoGame {
 
   private dealMelee(t: PlacedTower, e: PathEnemy, dmg: number, crit: boolean) {
     this.damageEnemy(e, dmg, false, false)
-    const s = this.enemyScreen(e)
-    this.spawnParticle(s.x, s.y, t.def.accent, 'spark')
-    if (crit) this.spawnText(s.x, s.y - 14, Math.round(dmg).toString(), true)
+    this.spawnParticle(e.sx, e.sy, t.def.accent, 'spark')
+    if (crit) this.spawnText(e.sx, e.sy - 14, Math.round(dmg).toString(), true)
     if (e.hp <= 0) this.killEnemy(e, this.enemies.indexOf(e))
   }
 
@@ -814,16 +856,17 @@ export class IsoGame {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i]
       p.life -= dt
-      const targetAlive = p.target && this.enemies.includes(p.target)
-      const es = targetAlive ? this.enemyScreen(p.target!) : gridToScreen(p.tc, p.tr, this.view)
-      if (targetAlive) {
-        p.tc = p.target!.c
-        p.tr = p.target!.r
+      const alive = p.target && this.enemies.includes(p.target)
+      const ex = alive ? p.target!.sx : p.tx
+      const ey = alive ? p.target!.sy : p.ty
+      if (alive) {
+        p.tx = p.target!.sx
+        p.ty = p.target!.sy
       }
-      const dx = es.x - p.x
-      const dy = es.y - p.y
+      const dx = ex - p.x
+      const dy = ey - p.y
       const d = Math.hypot(dx, dy)
-      if (d < (targetAlive ? 10 : 12) || p.life <= 0) {
+      if (d < (alive ? 12 : 14) || p.life <= 0) {
         this.projectileHit(p)
         this.projectiles.splice(i, 1)
         continue
@@ -841,8 +884,6 @@ export class IsoGame {
     const apply = (e: PathEnemy) => {
       this.damageEnemy(e, p.dmg, p.magic, !!p.pierceShield)
       if (p.slow) {
-        // double-slow → brief freeze (synergy); consume the slow so it isn't
-        // immediately re-applied on top of the freeze.
         if (e.slowT > 0) {
           e.freezeT = Math.max(e.freezeT, 0.6)
           e.slowT = 0
@@ -851,7 +892,6 @@ export class IsoGame {
         }
       }
       if (p.poison) {
-        // stacked DoT is bounded (1.25× base), never accumulates unboundedly.
         e.poisonDps = p.poison.dps * (e.poisonT > 0 ? 1.25 : 1)
         e.poisonT = Math.max(e.poisonT, p.poison.dur)
       }
@@ -860,28 +900,21 @@ export class IsoGame {
         e.burnT = Math.max(e.burnT, p.burn.dur)
       }
       e.hitFlash = 1
-      if (p.crit) {
-        const s = this.enemyScreen(e)
-        this.spawnText(s.x, s.y - 16, Math.round(p.dmg).toString(), true)
-      }
+      if (p.crit) this.spawnText(e.sx, e.sy - 16, Math.round(p.dmg).toString(), true)
       if (e.hp <= 0) this.killEnemy(e, this.enemies.indexOf(e))
     }
     if (p.splash) {
-      const cx = p.tc
-      const cy = p.tr
       this.spawnParticle(p.x, p.y, 0xffb066, 'ring')
       this.spawnParticle(p.x, p.y, 0x777777, 'smoke')
       for (const e of [...this.enemies]) {
-        if (Math.hypot(e.c - cx, e.r - cy) <= p.splash) apply(e)
+        if (Math.hypot(e.sx - p.tx, e.sy - p.ty) <= p.splash) apply(e)
       }
     } else {
-      // single-target: if the original target died mid-flight, hit whatever is
-      // now closest to the impact point instead of silently wasting the shot.
       let tgt = p.target && this.enemies.includes(p.target) ? p.target : null
       if (!tgt) {
-        let bd = 0.8
+        let bd = 28
         for (const e of this.enemies) {
-          const d = Math.hypot(e.c - p.tc, e.r - p.tr)
+          const d = Math.hypot(e.sx - p.tx, e.sy - p.ty)
           if (d < bd) {
             bd = d
             tgt = e
@@ -908,20 +941,18 @@ export class IsoGame {
     const gold = e.reward * mult
     this.gold += gold
     this.score += Math.round(e.maxHp)
-    const s = this.enemyScreen(e)
-    for (let i = 0; i < 4; i++) this.spawnParticle(s.x, s.y, e.def.color, 'spark')
-    this.spawnText(s.x, s.y - 12, `+${Math.round(gold)}`)
+    for (let i = 0; i < 4; i++) this.spawnParticle(e.sx, e.sy, e.def.color, 'spark')
+    this.spawnText(e.sx, e.sy - 12, `+${Math.round(gold)}`)
     playSfx('enemy_dead')
-    // split mechanic — gated off the first couple waves so early defenses cope
     if (e.def.splitInto && !e.noSplit && this.wave >= 3) {
       for (let i = 0; i < e.def.splitInto.count; i++) {
-        this.spawnEnemy(e.def.splitInto.type, Math.max(0, e.prog - 0.15 * i), 0.6, true)
+        this.spawnEnemy(e.def.splitInto.type, Math.max(0, e.dist - 8 * i), 0.6, true)
       }
     }
     if (e.def.boss) {
       this.shake = 1
       haptics.heavy()
-      for (let i = 0; i < 16; i++) this.spawnParticle(s.x, s.y, e.def.accent, 'spark')
+      for (let i = 0; i < 16; i++) this.spawnParticle(e.sx, e.sy, e.def.accent, 'spark')
     }
   }
 
@@ -971,10 +1002,8 @@ export class IsoGame {
     }
   }
 
-  get shakeOffset() {
+  get shakeOffset(): Vec {
     if (this.shake <= 0) return { x: 0, y: 0 }
-    // Time-derived so the render path never consumes the deterministic
-    // simulation RNG (which would framerate-couple combat outcomes).
     const s = this.shake * 6
     const t = this.time
     return { x: Math.sin(t * 91.7) * s, y: Math.cos(t * 73.3) * s }

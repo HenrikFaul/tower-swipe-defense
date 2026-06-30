@@ -1,20 +1,10 @@
-import { isPath, keepOf, spawnOf } from '../data/maps'
-import { TILE_H, TILE_W, TILE_LIFT, gridToScreen } from './iso'
+import { MAP_IMG_H, MAP_IMG_W } from '../data/maps'
 import { hex } from './vec'
-import drawBackground from './background'
-import { drawTowerSprite } from './spritesTowers'
-import { drawEnemySprite } from './spritesEnemies'
 import { drawBeam } from './fx'
-import { ENEMY_SPRITE, getImg, MAP_BG, ready, TOWER_SPRITE } from '../lib/assets'
+import { ENEMY_SPRITE, getImg, ready, TOWER_SPRITE } from '../lib/assets'
 import type { IsoGame, PathEnemy, PlacedTower } from './isoGame'
 
-const THEME_KEY: Record<string, string> = {
-  Meadow: 'meadow',
-  Canyon: 'canyon',
-  Frostland: 'frost',
-  Ashlands: 'ashlands',
-}
-
+// Beam tint per projectile kind (additive neon tracer).
 const BEAM_COLOR: Record<string, string> = {
   arrow: '#FFD27A',
   cannon: '#FF8A3D',
@@ -24,198 +14,204 @@ const BEAM_COLOR: Record<string, string> = {
   melee: '#FFB347',
 }
 
+// Solid fallback fill while the illustrated background decodes.
+const MAP_FALLBACK: Record<string, string> = {
+  'Green Forest': '#1d3a22',
+  'Desert Ruins': '#5a4326',
+  'Frozen Peaks': '#243a4d',
+}
+
+// Sprite footprint in *image-space* px (scaled by view.scale on screen so the
+// art and the actors share one coordinate system). Tuned to the drawn plots.
+const TOWER_W_IMG = 132
+const ENEMY_W_IMG = 104
+const BOSS_W_IMG = 210
+const METEOR_R = 92 // mirrors IsoGame METEOR_R (px-space)
+
 export function renderIso(ctx: CanvasRenderingContext2D, game: IsoGame) {
   const { w, h, view, map } = game
+  const s = view.scale
 
-  // Real illustrated battlefield backdrop (darkened so the board reads),
-  // falling back to the procedural parallax until the image decodes.
-  const bgImg = getImg(MAP_BG[map.name] ?? MAP_BG.Meadow)
+  // 1) Illustrated battlefield — drawn with the SAME cover-fit transform the
+  //    engine uses for path/plots, so towers sit on the drawn pads and enemies
+  //    walk the drawn road. Falls back to a flat tone until the JPG decodes.
+  const bgImg = getImg(map.bg)
   if (ready(bgImg)) {
-    drawCover(ctx, bgImg, w, h)
-    ctx.fillStyle = 'rgba(8,6,24,0.5)'
-    ctx.fillRect(0, 0, w, h)
+    ctx.drawImage(bgImg, view.ox, view.oy, MAP_IMG_W * s, MAP_IMG_H * s)
   } else {
-    drawBackground(ctx, w, h, THEME_KEY[map.name] ?? 'meadow', game.time)
+    ctx.fillStyle = MAP_FALLBACK[map.name] ?? '#16131f'
+    ctx.fillRect(0, 0, w, h)
   }
+  // gentle top/bottom vignette so the HUD chrome reads over the art
+  const vg = ctx.createLinearGradient(0, 0, 0, h)
+  vg.addColorStop(0, 'rgba(6,4,16,0.34)')
+  vg.addColorStop(0.16, 'rgba(6,4,16,0.05)')
+  vg.addColorStop(0.82, 'rgba(6,4,16,0.05)')
+  vg.addColorStop(1, 'rgba(6,4,16,0.4)')
+  ctx.fillStyle = vg
+  ctx.fillRect(0, 0, w, h)
 
   const shake = game.shakeOffset
   ctx.save()
   ctx.translate(shake.x, shake.y)
 
-  const s = view.scale
-  const halfW = (TILE_W / 2) * s
-  const halfH = (TILE_H / 2) * s
-  const lift = TILE_LIFT * s
-  const buildMode = !!game.selectedBuild
-  const th = map.theme
+  // 2) Direction chevrons along the drawn road (subtle, animated march).
+  drawPathFlow(ctx, game, s)
 
-  // isometric board tiles
-  for (let r = 0; r < map.rows; r++) {
-    for (let c = 0; c < map.cols; c++) {
-      const p = gridToScreen(c, r, view)
-      const path = isPath(map, c, r)
-      drawTile(ctx, p.x, p.y, halfW, halfH, lift, path ? th.pathTop : th.grassTop, path ? th.pathL : th.grassL, path ? th.pathR : th.grassR)
-      if (buildMode && !path && !game.towers.some((t) => t.c === c && t.r === r)) {
-        ctx.strokeStyle = 'rgba(255,180,80,0.7)'
-        ctx.lineWidth = 2
-        diamond(ctx, p.x, p.y, halfW - 2, halfH - 2)
-        ctx.stroke()
-      }
+  // 3) Build mode → glowing rings on every open plot.
+  if (game.selectedBuild) {
+    for (let i = 0; i < game.plotsPx.length; i++) {
+      if (game.isPlotOccupied(i)) continue
+      const p = game.plotsPx[i]
+      const pulse = 0.55 + 0.25 * Math.sin(game.time * 4 + i)
+      ctx.save()
+      ctx.strokeStyle = `rgba(255,205,110,${pulse})`
+      ctx.fillStyle = 'rgba(255,205,110,0.10)'
+      ctx.lineWidth = 2.5 * s
+      ctx.beginPath()
+      ctx.ellipse(p.x, p.y, 26 * s, 15 * s, 0, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.stroke()
+      ctx.restore()
     }
   }
 
-  drawPathArrows(ctx, game, s)
-  drawPortal(ctx, gridToScreen(spawnOf(map).c, spawnOf(map).r, view), s, game.time)
-  drawKeep(ctx, gridToScreen(keepOf(map).c, keepOf(map).r, view), s, game.lives)
+  // 4) Keep banner (lives flag) at the path end.
+  drawKeepFlag(ctx, game.keepPos(), s, game.lives, game.time)
 
-  // selected tower range ring
+  // 5) Selected-tower range ring.
   const sel = game.towers.find((t) => t.id === game.selectedTowerId)
   if (sel) {
-    const sp = gridToScreen(sel.c, sel.r, view)
     const range = game.towerRange(sel)
-    ctx.strokeStyle = 'rgba(92,200,255,0.8)'
+    ctx.save()
+    ctx.strokeStyle = 'rgba(92,200,255,0.85)'
     ctx.fillStyle = 'rgba(92,200,255,0.10)'
     ctx.lineWidth = 2
     ctx.beginPath()
-    ctx.ellipse(sp.x, sp.y, range * TILE_W * 0.5 * s, range * TILE_H * 0.5 * s, 0, 0, Math.PI * 2)
+    ctx.arc(sel.sx, sel.sy, range, 0, Math.PI * 2)
     ctx.fill()
     ctx.stroke()
+    ctx.restore()
   }
 
-  // entities sorted by depth → detailed sprites
-  const items: { depth: number; fn: () => void }[] = []
-  for (const t of game.towers) {
-    const p = gridToScreen(t.c, t.r, view)
-    const img = getImg(TOWER_SPRITE[t.type])
-    items.push({
-      depth: t.c + t.r,
-      fn: () => {
-        const selected = game.selectedTowerId === t.id
-        if (ready(img)) {
-          const wdt = 82 * s * (1 + t.tier * 0.08)
-          drawShadow(ctx, p.x, p.y, wdt * 0.32)
-          const bob = Math.sin(t.bob * 1.6) * 1.2 * s
-          drawSpriteImg(ctx, img, p.x, p.y + bob, wdt, false, 0.74)
-          drawTierPips(ctx, p.x, p.y, s, t.tier)
-          if (selected) {
-            ctx.strokeStyle = '#ffd27a'
-            ctx.lineWidth = 2
-            ctx.beginPath()
-            ctx.ellipse(p.x, p.y + 4 * s, 26 * s, 13 * s, 0, 0, Math.PI * 2)
-            ctx.stroke()
-          }
-        } else {
-          drawTowerSprite(ctx, t.type, p.x, p.y, 30 * s, {
-            tier: t.tier,
-            flash: t.flash,
-            angle: t.angle,
-            selected,
-            time: game.time,
-          })
-        }
-      },
-    })
-  }
-  for (const e of game.enemies) {
-    const p = gridToScreen(e.c, e.r, view)
-    const seg = Math.min(map.path.length - 2, Math.floor(e.prog))
-    const a = gridToScreen(map.path[seg].c, map.path[seg].r, view)
-    const b = gridToScreen(map.path[seg + 1].c, map.path[seg + 1].r, view)
-    const faceLeft = b.x - a.x < 0
-    const img = getImg(ENEMY_SPRITE[e.type])
-    items.push({
-      depth: e.c + e.r + 0.5,
-      fn: () => {
-        const hpFrac = Math.max(0, e.hp / e.maxHp)
-        if (ready(img)) {
-          const wdt = e.def.radius * s * (e.def.boss ? 4.8 : 3.7)
-          const bob = e.freezeT > 0 ? 0 : Math.abs(Math.sin(e.wobble * 1.3)) * 2 * s
-          drawShadow(ctx, p.x, p.y, wdt * 0.34)
-          ctx.save()
-          if (e.freezeT > 0) ctx.filter = 'brightness(1.1) saturate(0.4)'
-          else if (e.poisonT > 0) ctx.filter = 'hue-rotate(40deg) saturate(1.3)'
-          drawSpriteImg(ctx, img, p.x, p.y - bob, wdt, faceLeft, 0.62)
-          ctx.restore()
-          if (e.shieldAura > 0) {
-            ctx.strokeStyle = 'rgba(155,123,255,0.8)'
-            ctx.lineWidth = 2
-            ctx.beginPath()
-            ctx.arc(p.x, p.y - wdt * 0.32, wdt * 0.5, 0, Math.PI * 2)
-            ctx.stroke()
-          }
-          if (hpFrac < 1) drawEnemyHp(ctx, p.x, p.y - wdt * 0.78, wdt * 0.7, hpFrac, !!e.def.boss, !!e.def.elite)
-        } else {
-          drawEnemySprite(ctx, e.type, p.x, p.y, e.def.radius * s * 0.12, {
-            hpFrac,
-            faceLeft,
-            wobble: e.wobble,
-            frozen: e.freezeT > 0,
-            poisoned: e.poisonT > 0,
-            enraged: e.enraged,
-            shield: e.shieldAura > 0,
-            boss: !!e.def.boss,
-            time: game.time,
-          })
-        }
-      },
-    })
-  }
-  items.sort((a, b) => a.depth - b.depth)
+  // 6) Actors — painter-sorted by screen-Y so lower entities overlap upper.
+  const items: { y: number; fn: () => void }[] = []
+  for (const t of game.towers) items.push({ y: t.sy, fn: () => drawTower(ctx, game, t, s) })
+  for (const e of game.enemies) items.push({ y: e.sy + 0.5, fn: () => drawEnemy(ctx, game, e, s) })
+  items.sort((a, b) => a.y - b.y)
   for (const it of items) it.fn()
 
-  // projectiles as glowing beam tracers
+  // 7) Projectiles as glowing beam tracers.
   for (const p of game.projectiles) {
     const col = BEAM_COLOR[p.kind] ?? hex(p.color)
     drawBeam(ctx, p.px, p.py, p.x, p.y, col, p.crit ? 4.5 : 3)
   }
 
+  // 8) Particles (sparks / rings / smoke / damage text).
   drawParticles(ctx, game)
 
+  // 9) Meteor aim reticle.
   if (game.aim) {
-    const k = gridToScreen(keepOf(map).c, keepOf(map).r, view)
-    ctx.setLineDash([8, 8])
+    const k = game.keepPos()
+    ctx.save()
+    ctx.setLineDash([9, 9])
     ctx.strokeStyle = 'rgba(255,140,60,0.95)'
     ctx.lineWidth = 3
     ctx.beginPath()
-    ctx.moveTo(k.x, k.y - 20)
+    ctx.moveTo(k.x, k.y - 24 * s)
     ctx.lineTo(game.aim.x, game.aim.y)
     ctx.stroke()
     ctx.setLineDash([])
-    ctx.strokeStyle = 'rgba(255,90,40,0.6)'
+    ctx.strokeStyle = 'rgba(255,90,40,0.7)'
+    ctx.lineWidth = 2
     ctx.beginPath()
-    ctx.ellipse(game.aim.x, game.aim.y, 1.7 * TILE_W * 0.5 * s, 1.7 * TILE_H * 0.5 * s, 0, 0, Math.PI * 2)
+    ctx.arc(game.aim.x, game.aim.y, METEOR_R, 0, Math.PI * 2)
     ctx.stroke()
+    ctx.restore()
   }
 
   ctx.restore()
 
+  // 10) Full-screen damage flash + low-lives danger frame.
   if (game.flash > 0) {
     ctx.fillStyle = `rgba(210,40,30,${0.25 * game.flash})`
     ctx.fillRect(0, 0, w, h)
   }
-  if (game.lives / 8 < 1 && game.lives > 0) {
-    const pulse = 0.3 + 0.25 * Math.sin(performance.now() / 160)
+  if (game.lives > 0 && game.lives < 4) {
+    const pulse = 0.3 + 0.25 * Math.sin(game.time * 6)
     ctx.strokeStyle = `rgba(220,40,30,${pulse})`
     ctx.lineWidth = 12
     ctx.strokeRect(6, 6, w - 12, h - 12)
   }
 }
 
-// ---------- raster sprite helpers ----------
-function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number) {
-  const ir = img.naturalWidth / img.naturalHeight
-  const cr = w / h
-  let dw = w
-  let dh = h
-  if (ir > cr) {
-    dh = h
-    dw = h * ir
-  } else {
-    dw = w
-    dh = w / ir
+// ───────────────────────── actors ─────────────────────────
+
+function drawTower(ctx: CanvasRenderingContext2D, game: IsoGame, t: PlacedTower, s: number) {
+  const selected = game.selectedTowerId === t.id
+  const img = getImg(TOWER_SPRITE[t.type])
+  const width = TOWER_W_IMG * s * (1 + t.tier * 0.07)
+  drawShadow(ctx, t.sx, t.sy, width * 0.34)
+  if (selected) {
+    ctx.strokeStyle = '#ffd27a'
+    ctx.lineWidth = 2.5
+    ctx.beginPath()
+    ctx.ellipse(t.sx, t.sy, width * 0.34, width * 0.17, 0, 0, Math.PI * 2)
+    ctx.stroke()
   }
-  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh)
+  const bob = Math.sin(t.bob * 1.6) * 1.2 * s
+  if (t.flash > 0) {
+    ctx.save()
+    ctx.shadowColor = hex(t.def.accent)
+    ctx.shadowBlur = 18 * t.flash
+    drawSpriteImg(ctx, img, t.sx, t.sy + bob, width, false, 0.84)
+    ctx.restore()
+  } else {
+    drawSpriteImg(ctx, img, t.sx, t.sy + bob, width, false, 0.84)
+  }
+  drawTierPips(ctx, t.sx, t.sy + 7 * s, s, t.tier)
 }
+
+function drawEnemy(ctx: CanvasRenderingContext2D, game: IsoGame, e: PathEnemy, s: number) {
+  const img = getImg(ENEMY_SPRITE[e.type])
+  const width = (e.def.boss ? BOSS_W_IMG : ENEMY_W_IMG) * s
+  const hpFrac = Math.max(0, e.hp / e.maxHp)
+  const bob = e.freezeT > 0 ? 0 : Math.abs(Math.sin(e.wobble * 1.3)) * 2 * s
+  drawShadow(ctx, e.sx, e.sy, width * 0.32)
+  ctx.save()
+  if (e.freezeT > 0) ctx.filter = 'brightness(1.15) saturate(0.45)'
+  else if (e.poisonT > 0) ctx.filter = 'hue-rotate(45deg) saturate(1.35)'
+  else if (e.enraged) ctx.filter = 'brightness(1.1) saturate(1.4)'
+  if (ready(img)) {
+    drawSpriteImg(ctx, img, e.sx, e.sy - bob, width, e.faceLeft, 0.62)
+  } else {
+    ctx.fillStyle = hex(e.def.color)
+    ctx.beginPath()
+    ctx.arc(e.sx, e.sy - width * 0.3, width * 0.3, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
+  if (e.hitFlash > 0) {
+    ctx.save()
+    ctx.globalCompositeOperation = 'lighter'
+    ctx.globalAlpha = e.hitFlash * 0.55
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.arc(e.sx, e.sy - width * 0.34, width * 0.32, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+  if (e.shieldAura > 0) {
+    ctx.strokeStyle = 'rgba(155,123,255,0.85)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(e.sx, e.sy - width * 0.36, width * 0.46, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  if (hpFrac < 1) drawEnemyHp(ctx, e.sx, e.sy - width * 0.86, width * 0.74, hpFrac, !!e.def.boss, !!e.def.elite)
+}
+
+// ───────────────────────── helpers ─────────────────────────
 
 function drawSpriteImg(
   ctx: CanvasRenderingContext2D,
@@ -226,6 +222,7 @@ function drawSpriteImg(
   faceLeft: boolean,
   anchorY: number,
 ) {
+  if (!ready(img)) return
   const hgt = width * (img.naturalHeight / img.naturalWidth)
   ctx.save()
   ctx.translate(cx, cy)
@@ -235,9 +232,9 @@ function drawSpriteImg(
 }
 
 function drawShadow(ctx: CanvasRenderingContext2D, x: number, y: number, rx: number) {
-  ctx.fillStyle = 'rgba(0,0,0,0.32)'
+  ctx.fillStyle = 'rgba(0,0,0,0.34)'
   ctx.beginPath()
-  ctx.ellipse(x, y + 3, rx, rx * 0.42, 0, 0, Math.PI * 2)
+  ctx.ellipse(x, y + 3, rx, rx * 0.4, 0, 0, Math.PI * 2)
   ctx.fill()
 }
 
@@ -247,127 +244,75 @@ function drawTierPips(ctx: CanvasRenderingContext2D, x: number, y: number, s: nu
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'
     ctx.lineWidth = 1
     ctx.beginPath()
-    ctx.arc(x - (tier - 1) * 4 * s + i * 8 * s, y + 9 * s, 2.4 * s, 0, Math.PI * 2)
+    ctx.arc(x - (tier - 1) * 4 * s + i * 8 * s, y, 2.4 * s, 0, Math.PI * 2)
     ctx.fill()
     ctx.stroke()
   }
 }
 
 function drawEnemyHp(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, frac: number, boss: boolean, elite: boolean) {
-  ctx.fillStyle = 'rgba(0,0,0,0.55)'
-  ctx.fillRect(x - w / 2, y, w, 4)
+  const hh = boss ? 5 : 3.4
+  ctx.fillStyle = 'rgba(0,0,0,0.6)'
+  ctx.fillRect(x - w / 2, y, w, hh)
   ctx.fillStyle = boss ? '#ff5a3c' : elite ? '#ffb347' : '#7bd16a'
-  ctx.fillRect(x - w / 2, y, w * frac, 4)
+  ctx.fillRect(x - w / 2, y, w * frac, hh)
 }
 
-// ---------- board helpers ----------
-function diamond(ctx: CanvasRenderingContext2D, x: number, y: number, hw: number, hh: number) {
-  ctx.beginPath()
-  ctx.moveTo(x, y - hh)
-  ctx.lineTo(x + hw, y)
-  ctx.lineTo(x, y + hh)
-  ctx.lineTo(x - hw, y)
-  ctx.closePath()
-}
-
-function drawTile(ctx: CanvasRenderingContext2D, x: number, y: number, hw: number, hh: number, lift: number, top: string, left: string, right: string) {
-  ctx.fillStyle = left
-  ctx.beginPath()
-  ctx.moveTo(x - hw, y)
-  ctx.lineTo(x, y + hh)
-  ctx.lineTo(x, y + hh + lift)
-  ctx.lineTo(x - hw, y + lift)
-  ctx.closePath()
-  ctx.fill()
-  ctx.fillStyle = right
-  ctx.beginPath()
-  ctx.moveTo(x + hw, y)
-  ctx.lineTo(x, y + hh)
-  ctx.lineTo(x, y + hh + lift)
-  ctx.lineTo(x + hw, y + lift)
-  ctx.closePath()
-  ctx.fill()
-  ctx.fillStyle = top
-  diamond(ctx, x, y, hw, hh)
-  ctx.fill()
-  ctx.strokeStyle = 'rgba(0,0,0,0.14)'
-  ctx.lineWidth = 1
-  ctx.stroke()
-}
-
-function drawPathArrows(ctx: CanvasRenderingContext2D, game: IsoGame, s: number) {
-  const path = game.map.path
-  ctx.fillStyle = 'rgba(255,255,255,0.22)'
-  for (let i = 0; i < path.length - 1; i += 2) {
-    const a = gridToScreen(path[i].c, path[i].r, game.view)
-    const b = gridToScreen(path[i + 1].c, path[i + 1].r, game.view)
-    const mx = (a.x + b.x) / 2
-    const my = (a.y + b.y) / 2
-    const ang = Math.atan2(b.y - a.y, b.x - a.x)
-    ctx.save()
-    ctx.translate(mx, my)
-    ctx.rotate(ang)
-    ctx.beginPath()
-    ctx.moveTo(5 * s, 0)
-    ctx.lineTo(-3 * s, -4 * s)
-    ctx.lineTo(-3 * s, 4 * s)
-    ctx.closePath()
-    ctx.fill()
-    ctx.restore()
-  }
-}
-
-function drawPortal(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, s: number, time: number) {
+function drawPathFlow(ctx: CanvasRenderingContext2D, game: IsoGame, s: number) {
+  const path = game.pathPx
+  if (path.length < 2) return
+  const march = (game.time * 40) % 36
   ctx.save()
-  ctx.translate(p.x, p.y - 6 * s)
-  const pulse = 1 + Math.sin(time * 3) * 0.12
-  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, 24 * s * pulse)
-  g.addColorStop(0, 'rgba(177,76,255,0.95)')
-  g.addColorStop(1, 'rgba(177,76,255,0)')
-  ctx.fillStyle = g
-  ctx.beginPath()
-  ctx.ellipse(0, 0, 22 * s * pulse, 13 * s * pulse, 0, 0, Math.PI * 2)
-  ctx.fill()
-  ctx.strokeStyle = 'rgba(220,180,255,0.85)'
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.ellipse(0, 0, 14 * s, 8 * s, 0, 0, Math.PI * 2)
-  ctx.stroke()
+  ctx.fillStyle = 'rgba(255,240,210,0.18)'
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i]
+    const b = path[i + 1]
+    const segLen = Math.hypot(b.x - a.x, b.y - a.y)
+    const ang = Math.atan2(b.y - a.y, b.x - a.x)
+    for (let d = march % 36; d < segLen; d += 36) {
+      const f = d / segLen
+      const x = a.x + (b.x - a.x) * f
+      const y = a.y + (b.y - a.y) * f
+      ctx.save()
+      ctx.translate(x, y)
+      ctx.rotate(ang)
+      ctx.beginPath()
+      ctx.moveTo(5 * s, 0)
+      ctx.lineTo(-3 * s, -3.5 * s)
+      ctx.lineTo(-3 * s, 3.5 * s)
+      ctx.closePath()
+      ctx.fill()
+      ctx.restore()
+    }
+  }
   ctx.restore()
 }
 
-function drawKeep(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, s: number, lives: number) {
+function drawKeepFlag(ctx: CanvasRenderingContext2D, p: { x: number; y: number }, s: number, lives: number, time: number) {
   ctx.save()
   ctx.translate(p.x, p.y)
-  ctx.fillStyle = 'rgba(0,0,0,0.35)'
+  // protective glow ring around the objective
+  const pulse = 1 + Math.sin(time * 2.4) * 0.1
+  const g = ctx.createRadialGradient(0, 0, 4, 0, 0, 46 * s * pulse)
+  g.addColorStop(0, 'rgba(92,200,255,0.28)')
+  g.addColorStop(1, 'rgba(92,200,255,0)')
+  ctx.fillStyle = g
   ctx.beginPath()
-  ctx.ellipse(0, 4 * s, 22 * s, 11 * s, 0, 0, Math.PI * 2)
+  ctx.ellipse(0, 0, 44 * s * pulse, 26 * s * pulse, 0, 0, Math.PI * 2)
   ctx.fill()
-  // glowing base
-  const glowG = ctx.createRadialGradient(0, -10 * s, 4, 0, -10 * s, 40 * s)
-  glowG.addColorStop(0, 'rgba(92,200,255,0.4)')
-  glowG.addColorStop(1, 'rgba(92,200,255,0)')
-  ctx.fillStyle = glowG
-  ctx.fillRect(-40 * s, -50 * s, 80 * s, 60 * s)
-  ctx.fillStyle = '#5a468c'
-  ctx.fillRect(-17 * s, -36 * s, 34 * s, 38 * s)
-  ctx.fillStyle = '#3a2c5e'
-  ctx.fillRect(-17 * s, -36 * s, 11 * s, 38 * s)
-  ctx.fillStyle = '#7a5fb8'
-  for (let i = 0; i < 4; i++) ctx.fillRect(-17 * s + i * 9.5 * s, -42 * s, 6 * s, 8 * s)
-  ctx.fillStyle = 'rgba(255,210,122,0.9)'
-  ctx.fillRect(-3 * s, -22 * s, 6 * s, 9 * s)
-  ctx.strokeStyle = '#FFD27A'
-  ctx.lineWidth = 2 * s
+  // banner pole + flag (color tracks remaining lives)
+  ctx.strokeStyle = 'rgba(40,28,18,0.9)'
+  ctx.lineWidth = 2.4 * s
   ctx.beginPath()
-  ctx.moveTo(0, -42 * s)
-  ctx.lineTo(0, -56 * s)
+  ctx.moveTo(0, -8 * s)
+  ctx.lineTo(0, -46 * s)
   ctx.stroke()
-  ctx.fillStyle = lives > 6 ? '#5EE08A' : '#FF4D5E'
+  const wave = Math.sin(time * 5) * 2 * s
+  ctx.fillStyle = lives > 6 ? '#5EE08A' : lives > 3 ? '#FFB347' : '#FF4D5E'
   ctx.beginPath()
-  ctx.moveTo(0, -56 * s)
-  ctx.lineTo(13 * s, -52 * s)
-  ctx.lineTo(0, -48 * s)
+  ctx.moveTo(0, -46 * s)
+  ctx.lineTo(18 * s + wave, -42 * s)
+  ctx.lineTo(0, -34 * s)
   ctx.closePath()
   ctx.fill()
   ctx.restore()
