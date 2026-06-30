@@ -2,14 +2,14 @@ import { useGameStore } from './store/gameStore'
 import HeroSplash from './screens/HeroSplash'
 import MainMenuPro from './screens/MainMenuPro'
 import PlayScreen from './screens/PlayScreen'
-import SkillTreeUpgrades from './screens/SkillTreeUpgrades'
+import SkillTreeView from './screens/SkillTreeView'
 import DailyChallengeScreen from './screens/DailyChallengeScreen'
-import DailyRewardsScreen from './screens/DailyRewardsScreen'
+import DailyRewardsPremium from './screens/DailyRewardsPremium'
 import LeaderboardScreen from './screens/LeaderboardScreen'
 import SettingsScreen from './screens/SettingsScreen'
-import ShopScreen from './screens/ShopScreen'
+import ShopPremium from './screens/ShopPremium'
 import WorldMapScreen from './screens/WorldMapScreen'
-import BattlePassScreen from './screens/BattlePassScreen'
+import BattlePassPremium from './screens/BattlePassPremium'
 
 export default function App() {
   const screen = useGameStore((s) => s.screen)
@@ -19,14 +19,14 @@ export default function App() {
       {screen === 'splash' && <HeroSplash onStart={() => go('menu')} />}
       {screen === 'menu' && <MainMenuPro />}
       {screen === 'play' && <PlayScreen />}
-      {screen === 'upgrades' && <SkillTreeUpgrades />}
+      {screen === 'upgrades' && <SkillTreeView onBack={() => go('menu')} />}
       {screen === 'daily' && <DailyChallengeScreen />}
-      {screen === 'rewards' && <DailyRewardsScreen />}
+      {screen === 'rewards' && <DailyRewardsPremium />}
       {screen === 'leaderboard' && <LeaderboardScreen />}
       {screen === 'settings' && <SettingsScreen />}
-      {screen === 'shop' && <ShopScreen />}
+      {screen === 'shop' && <ShopPremium />}
       {screen === 'worldmap' && <WorldMapScreen />}
-      {screen === 'battlepass' && <BattlePassScreen />}
+      {screen === 'battlepass' && <BattlePassPremium />}
     </div>
   )
 }

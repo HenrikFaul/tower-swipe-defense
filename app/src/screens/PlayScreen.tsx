@@ -5,8 +5,11 @@ import { renderIso } from '../engine/isoRender'
 import { TOWERS, TOWER_IDS, type TowerId } from '../data/towers'
 import { POWERS } from '../data/powers'
 import type { EnemyType } from '../data/enemies'
-import { PauseModal, GameOverModal } from '../components/IsoModals'
-import VictoryPro from '../components/VictoryPro'
+import { PauseModal } from '../components/IsoModals'
+import VictoryScreen from '../components/VictoryScreen'
+import DefeatScreen from '../components/DefeatScreen'
+import BossBanner from '../components/BossBanner'
+import { CoinChip, HeartChip } from '../components/CurrencyChips'
 import { playSfx } from '../lib/audio'
 import { submitRun } from '../lib/cloud'
 
@@ -27,14 +30,17 @@ export default function PlayScreen() {
   const autoStart = useGameStore((s) => s.settings.autoStart)
 
   const [hud, setHud] = useState<Hud | null>(null)
+  const [runKey, setRunKey] = useState(0)
 
   useEffect(() => {
     const wrap = wrapRef.current!
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d', { alpha: false })!
     const run = pendingRun ?? { mode: 'normal' as const, seed: (Math.random() * 1e9) | 0 }
+    const seed = runKey === 0 ? run.seed : (Math.random() * 1e9) | 0
+    recordedRef.current = false
 
-    const game = new IsoGame({ seed: run.seed, mods: runModifiers(), onChange: () => setHud(game.getHud()) })
+    const game = new IsoGame({ seed, mods: runModifiers(), onChange: () => setHud(game.getHud()) })
     gameRef.current = game
 
     const dpr = Math.min(2, window.devicePixelRatio || 1)
@@ -104,7 +110,7 @@ export default function PlayScreen() {
       document.removeEventListener('visibilitychange', onVis)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [runKey])
 
   const game = gameRef.current
 
@@ -148,8 +154,8 @@ export default function PlayScreen() {
               <span className="muted" style={{ fontSize: 11, paddingLeft: 4 }}>{hud.mapName}</span>
             </div>
             <div className="row gap">
-              <span className="chip" style={{ color: '#ff8a7a' }}>❤ {hud.lives}</span>
-              <span className="chip coin">🪙 {hud.gold}</span>
+              <HeartChip value={hud.lives} low={hud.lives <= 5} size={26} />
+              <CoinChip value={hud.gold} compact={false} size={26} />
               {hud.phase === 'wave' && (
                 <button className="icon-btn" aria-label="Speed" onClick={cycleSpeed}>{hud.speed}×</button>
               )}
@@ -158,10 +164,7 @@ export default function PlayScreen() {
           </div>
 
           {hud.bossLabel && hud.phase === 'wave' && hud.bossHpFrac > 0 && (
-            <div style={{ position: 'absolute', top: 92, left: 24, right: 24, zIndex: 5 }}>
-              <div className="center tag" style={{ color: 'var(--bad)' }}>{hud.bossLabel}</div>
-              <div className="hpbar low"><span style={{ width: `${hud.bossHpFrac * 100}%` }} /></div>
-            </div>
+            <BossBanner name={hud.bossLabel} hpFrac={hud.bossHpFrac} />
           )}
 
           {/* wave preview (build phase) */}
@@ -262,7 +265,7 @@ export default function PlayScreen() {
 
           {hud.phase === 'paused' && game && <PauseModal game={game} onQuit={() => finalize(false)} />}
           {hud.phase === 'cleared' && game && hud.cleared && (
-            <VictoryPro
+            <VictoryScreen
               wave={hud.cleared.wave}
               stars={hud.cleared.stars}
               coins={hud.cleared.coins}
@@ -270,7 +273,15 @@ export default function PlayScreen() {
               onContinue={() => game.continueAfterClear()}
             />
           )}
-          {hud.phase === 'gameover' && <GameOverModal hud={hud} onClaim={(d) => finalize(d)} />}
+          {hud.phase === 'gameover' && hud.result && (
+            <DefeatScreen
+              wave={hud.result.wave}
+              score={hud.result.score}
+              coins={hud.result.coins}
+              onClaim={(d) => finalize(d)}
+              onRetry={() => setRunKey((k) => k + 1)}
+            />
+          )}
 
           <div className="fps">{hud.fps} fps</div>
         </>
